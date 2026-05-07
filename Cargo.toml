@@ -1,0 +1,33 @@
+[package]
+name = "zcoder"
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "AI coding CLI — very early stage"
+keywords = ["coding-harness","coding-ai"]
+homepage = "https://github.com/jeremychone/zcoder"
+repository = "https://github.com/jeremychone/zcoder"
+
+[lints.rust]
+unsafe_code = "forbid"
+# unused = { level = "allow", priority = -1 } # For exploratory dev.
+# missing_docs = "warn"
+
+[[bin]]
+name = "zc"
+path = "src/main.rs"
+
+[dependencies]
+# -- Async
+tokio = { version = "1", features = ["full"] }
+# -- CLI
+clap = { version = "4", features = ["derive"] }
+inquire = "0.9"
+# -- AI
+genai = "0.5.1"
+udiffx = { version = "0.1", features = ["prompt"]}
+# -- FS
+simple-fs = { version = "0.12"}
+# -- Others
+derive_more = { version = "2", features = ["from", "display"] }
+
