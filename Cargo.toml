@@ -20,9 +20,11 @@ path = "src/main.rs"
 [dependencies]
 # -- Async
 tokio = { version = "1", features = ["full"] }
+futures = "0.3.31"
 # -- CLI
 clap = { version = "4", features = ["derive"] }
-inquire = "0.9"
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
 # -- AI
 genai = "0.5.1"
 udiffx = { version = "0.1", features = ["prompt"]}

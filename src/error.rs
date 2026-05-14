@@ -19,9 +19,6 @@ pub enum Error {
 
 	#[from]
 	SimpleFs(simple_fs::Error),
-
-	#[from]
-	Inquire(inquire::InquireError),
 }
 
 // region:    --- Custom
