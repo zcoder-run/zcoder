@@ -6,7 +6,7 @@ pub enum AppEvent {
 	Term(Event),
 	Action(AppActionEvent),
 	Exec(ExecStatusEvent),
-	#[allow(unused)]
+	Tick,
 	DoRedraw,
 }
 

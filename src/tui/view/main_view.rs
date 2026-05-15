@@ -1,4 +1,4 @@
-use crate::tui::AppState;
+use crate::tui::core::AppState;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
@@ -23,9 +23,9 @@ pub fn render(f: &mut Frame, state: &AppState) {
 	f.render_widget(header, chunks[0]);
 
 	// -- Content
-	let content_text = if let Some(err) = &state.last_error() {
+	let content_text = if let Some(err) = state.last_error() {
 		format!("Error: {err}")
-	} else if let Some(ans) = &state.last_answer() {
+	} else if let Some(ans) = state.last_answer() {
 		ans.to_string()
 	} else {
 		"No answer yet. Type a prompt and press Enter.".to_string()
