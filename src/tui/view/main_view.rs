@@ -1,7 +1,7 @@
 use crate::tui::core::AppState;
+use crate::tui::view::style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
-use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 pub fn render(f: &mut Frame, state: &AppState) {
@@ -16,7 +16,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
 		])
 		.split(f.area());
 
-	f.render_widget(Block::new().style(Style::default().bg(Color::Black)), f.area());
+	f.render_widget(Block::new().style(style::STL_BKG), f.area());
 
 	// -- Header
 
@@ -34,18 +34,12 @@ pub fn render(f: &mut Frame, state: &AppState) {
 		vertical: 1,
 	});
 	let content = Paragraph::new(content_text)
-		.style(Style::default().fg(Color::Indexed(252)).bg(Color::Indexed(236)))
+		.style(style::STL_ANSWER)
 		.wrap(Wrap { trim: true });
 	f.render_widget(content, content_area);
 
 	// -- Status
-	let status_style = if state.last_error().is_some() {
-		Style::default().fg(Color::Red)
-	} else if state.is_waiting() {
-		Style::default().fg(Color::Yellow)
-	} else {
-		Style::default().fg(Color::Green)
-	};
+	let status_style = style::style_status(state.last_error().is_some(), state.is_waiting());
 	let status = Paragraph::new(format!(" Status: {} ", state.status())).style(status_style);
 	f.render_widget(
 		status,
@@ -56,11 +50,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
 	);
 
 	// -- Input
-	let input_style = if state.is_waiting() {
-		Style::default().fg(Color::DarkGray)
-	} else {
-		Style::default()
-	};
+	let input_style = style::style_input(state.is_waiting());
 	let input = Paragraph::new(state.input())
 		.block(Block::default().borders(Borders::TOP | Borders::BOTTOM))
 		.style(input_style);
@@ -74,7 +64,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
 
 	// -- Footer
 	let footer = Paragraph::new(" [Enter] Send  |  [/q] Quit  |  [Ctrl-c] Quit ")
-		.style(Style::default().fg(Color::DarkGray));
+		.style(style::STL_FOOTER);
 	f.render_widget(
 		footer,
 		chunks[4].inner(Margin {
