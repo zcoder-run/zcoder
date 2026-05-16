@@ -10,8 +10,9 @@ pub use error::{Error, Result};
 use genai::chat::ChatRequest;
 use tokio::sync::mpsc;
 
-// -- Consts
-const MODEL: &str = "gemini-3-flash-preview";
+// -- Consts (harcoded for now)
+const MODEL: &str = "gemini-3.1-flash-lite";
+
 const SRC_GLOBS: &[&str] = &[
 	// avoid root `**/..`
 	"src/**/*.{py,ts,js,rs,html,css,json,toml}",

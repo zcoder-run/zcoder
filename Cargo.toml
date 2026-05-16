@@ -26,7 +26,7 @@ clap = { version = "4", features = ["derive"] }
 ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
 # -- AI
-genai = "0.5.1"
+genai = { version = "=0.6.0-beta.20" }
 udiffx = { version = "0.1", features = ["prompt"]}
 # -- FS
 simple-fs = { version = "0.12"}
