@@ -6,7 +6,6 @@ Define the visual structure, render behavior, and view module organization for t
 
 The view renders `AppState` into a terminal frame using `ratatui`. It provides:
 
-- a header
 - an answer or error content area
 - a status line
 - a prompt input area
@@ -15,8 +14,12 @@ The view renders `AppState` into a terminal frame using `ratatui`. It provides:
 
 The scope covers only this view structure:
 
+- `src/tui/view/answer_view.rs`
+- `src/tui/view/footer_view.rs`
 - `src/tui/view/mod.rs`
 - `src/tui/view/main_view.rs`
+- `src/tui/view/prompt_view.rs`
+- `src/tui/view/status_view.rs`
 - `src/tui/view/comp/mod.rs`
 - `src/tui/view/comp/icons.rs`
 - `src/tui/view/style/mod.rs`
@@ -42,7 +45,11 @@ The view module is organized as a minimal top-level registry plus focused suppor
 ```text
 src/tui/view/
   mod.rs
+  answer_view.rs
+  footer_view.rs
   main_view.rs
+  prompt_view.rs
+  status_view.rs
   comp/
     mod.rs
     icons.rs
@@ -57,17 +64,25 @@ src/tui/view/
     text_helpers.rs
 ```
 
-No other view modules should be created for this spec. `main_view.rs` owns the full screen layout and delegates only to reusable helpers from `comp/`, `style/`, and `support/`.
+No other view modules should be created for this spec. `main_view.rs` owns the full screen layout and delegates answer, status, prompt, and footer rendering to focused section views. Section views may use reusable helpers from `comp/`, `style/`, and `support/`.
 
 `src/tui/view/mod.rs` is the view module registry and public re-export surface:
 
 ```rust
 // region:    --- Modules
 
+mod answer_view;
+mod footer_view;
 mod main_view;
+mod prompt_view;
+mod status_view;
 mod support;
 
+pub use answer_view::*;
+pub use footer_view::*;
 pub use main_view::*;
+pub use prompt_view::*;
+pub use status_view::*;
 
 pub mod comp;
 pub mod style;
@@ -81,9 +96,24 @@ Module responsibilities:
   - owns the render entry point
   - owns the top-level layout
   - renders the base background
-  - renders header, content, status, input, and footer
+  - delegates answer, status, prompt, and footer rendering
   - uses shared style constants instead of inline colors where practical
-  - may use small private helper functions for text selection and style selection
+  - keeps full-screen orchestration separate from section-specific widget code
+- `answer_view.rs`
+  - renders the answer or error content area
+  - prioritizes `state.last_error()` over `state.last_answer()`
+  - renders answer content on the dark answer background with 1 character of padding on each side
+  - wraps text with trimming enabled
+- `status_view.rs`
+  - renders the status area with an empty top row and one line of status text
+  - uses shared style helpers for ready, waiting, and error states
+- `prompt_view.rs`
+  - renders the current prompt input area
+  - dims input while waiting
+  - owns prompt cursor placement
+- `footer_view.rs`
+  - renders key hints for sending and quitting
+  - remains stateless unless footer behavior needs state later
 - `comp/mod.rs`
   - declares reusable UI component modules
   - re-exports component helpers
@@ -114,11 +144,10 @@ Module responsibilities:
 
 ## Main View Layout
 
-The prompt UI uses a vertical layout with five sections:
+The prompt UI uses a vertical layout with four sections:
 
-- header, fixed height of 3
 - content, flexible height
-- status, fixed height of 1
+- status, fixed height of 2, with the first row left empty
 - input, fixed height of 3
 - footer, fixed height of 1
 
@@ -126,9 +155,8 @@ Layout constraints:
 
 ```rust
 [
-	Constraint::Length(3),
 	Constraint::Min(0),
-	Constraint::Length(1),
+	Constraint::Length(2),
 	Constraint::Length(3),
 	Constraint::Length(1),
 ]
@@ -137,29 +165,24 @@ Layout constraints:
 Layering order:
 
 - render the base background
-- render header
 - render answer or error content
 - render status
 - render prompt input
 - render footer
-
-Header behavior:
-
-- renders the application name `zcoder`
-- uses a bordered block
-- uses cyan foreground styling from `style`
 
 Content behavior:
 
 - shows `Error: {err}` when `state.last_error()` exists
 - otherwise shows `state.last_answer()` when available
 - otherwise shows `No answer yet. Type a prompt and press Enter.`
-- uses a bordered block titled `AI Answer`
+- renders on the dark answer background without a border or title
+- uses ratatui layout constraints to add 1 character of left, top, right, and bottom padding
 - wraps text with trimming enabled
 
 Status behavior:
 
 - renders `Status: {state.status()}`
+- leaves one empty row above the status text so the status section has visual breathing room
 - uses an error style when an error exists
 - uses a waiting style while waiting
 - uses a ready style when idle and no error exists
@@ -181,24 +204,23 @@ Footer behavior:
 
 ### `src/tui/view/main_view.rs`
 
-`main_view.rs` should keep layout orchestration in one file and push reusable decisions into `style` and `support`.
+`main_view.rs` should keep top-level layout orchestration in one file and delegate section widgets to `answer_view`, `status_view`, `prompt_view`, and `footer_view`.
 
 Recommended source pattern:
 
 ```rust
 use crate::tui::AppState;
-use crate::tui::view::style;
+use crate::tui::view::{AnswerView, FooterView, PromptView, StatusView, style};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::Block;
 
 pub fn render(f: &mut Frame, state: &AppState) {
 	let chunks = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([
-			Constraint::Length(3), // Header
 			Constraint::Min(0),    // Content
-			Constraint::Length(1), // Status
+			Constraint::Length(2), // Status
 			Constraint::Length(3), // Input
 			Constraint::Length(1), // Footer
 		])
@@ -207,61 +229,35 @@ pub fn render(f: &mut Frame, state: &AppState) {
 	// -- Background
 	f.render_widget(Block::new().style(style::STL_BKG), f.area());
 
-	// -- Header
-	let header = Paragraph::new(" zcoder ")
-		.block(Block::default().borders(Borders::ALL))
-		.style(style::STL_HEADER);
-	f.render_widget(header, chunks[0]);
-
 	// -- Content
-	let content = Paragraph::new(content_text(state))
-		.block(Block::default().borders(Borders::ALL).title(" AI Answer "))
-		.wrap(Wrap { trim: true });
-	f.render_widget(content, chunks[1]);
+	AnswerView::render(f, chunks[0], state);
 
 	// -- Status
-	let status = Paragraph::new(format!(" Status: {} ", state.status())).style(status_style(state));
-	f.render_widget(status, chunks[2]);
+	StatusView::render(f, chunks[1], state);
 
 	// -- Input
-	let input = Paragraph::new(state.input())
-		.block(Block::default().borders(Borders::ALL).title(" Prompt (/q to quit) "))
-		.style(input_style(state));
-	f.render_widget(input, chunks[3]);
+	PromptView::render(f, chunks[2], state);
 
 	// -- Footer
-	let footer = Paragraph::new(" [Enter] Send  |  [/q] Quit  |  [Ctrl-c] Quit ");
-	f.render_widget(footer, chunks[4]);
-}
-
-fn content_text(state: &AppState) -> String {
-	if let Some(err) = &state.last_error() {
-		format!("Error: {err}")
-	} else if let Some(ans) = &state.last_answer() {
-		ans.to_string()
-	} else {
-		"No answer yet. Type a prompt and press Enter.".to_string()
-	}
-}
-
-fn status_style(state: &AppState) -> ratatui::style::Style {
-	if state.last_error().is_some() {
-		style::STL_STATUS_ERR
-	} else if state.is_waiting() {
-		style::STL_STATUS_WAITING
-	} else {
-		style::STL_STATUS_READY
-	}
-}
-
-fn input_style(state: &AppState) -> ratatui::style::Style {
-	if state.is_waiting() {
-		style::STL_INPUT_WAITING
-	} else {
-		style::STL_INPUT
-	}
+	FooterView::render(f, chunks[3], state);
 }
 ```
+
+### `src/tui/view/answer_view.rs`
+
+`answer_view.rs` owns content text selection and answer block rendering. It should render `Error: {err}` when `state.last_error()` exists, otherwise render `state.last_answer()` when available, otherwise render `No answer yet. Type a prompt and press Enter.`.
+
+### `src/tui/view/status_view.rs`
+
+`status_view.rs` owns the status line widget and should call shared style helpers from `style` for error, waiting, and ready states.
+
+### `src/tui/view/prompt_view.rs`
+
+`prompt_view.rs` owns prompt input rendering and cursor placement. It should use the dim input style while waiting and the default input style when editable.
+
+### `src/tui/view/footer_view.rs`
+
+`footer_view.rs` owns the footer key hints. It should render `[Enter] Send`, `[/q] Quit`, and `[Ctrl-c] Quit`.
 
 ### `src/tui/view/comp/mod.rs`
 
