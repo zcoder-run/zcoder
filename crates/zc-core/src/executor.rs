@@ -1,7 +1,6 @@
-use crate::{Error, Result};
+use crate::{Error, ExecActionEvent, ExecStatusEvent, Result};
 use genai::chat::{ChatMessage, ChatRequest};
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use zc_common::{ExecActionEvent, ExecStatusEvent};
 
 // -- Consts (harcoded for now)
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite";

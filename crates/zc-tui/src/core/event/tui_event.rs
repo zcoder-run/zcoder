@@ -1,5 +1,5 @@
 use crossterm::event::Event;
-use zc_common::ExecStatusEvent;
+use zc_core::ExecStatusEvent;
 
 #[derive(Debug)]
 pub enum TuiEvent {

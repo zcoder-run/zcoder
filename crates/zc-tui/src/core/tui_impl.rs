@@ -1,8 +1,7 @@
 use super::{TuiEvent, term_reader, tui_loop};
 use crate::Result;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use zc_common::ExecStatusEvent;
-use zc_core::ExecutorTx;
+use zc_core::{ExecStatusEvent, ExecutorTx};
 
 pub type AppTx = Sender<TuiEvent>;
 

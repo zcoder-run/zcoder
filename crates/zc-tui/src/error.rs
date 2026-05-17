@@ -16,7 +16,7 @@ pub enum Error {
 	ZcCore(zc_core::Error),
 
 	#[from]
-	ExecActionSend(tokio::sync::mpsc::error::SendError<zc_common::ExecActionEvent>),
+	ExecActionSend(tokio::sync::mpsc::error::SendError<zc_core::ExecActionEvent>),
 }
 
 // region:    --- Custom

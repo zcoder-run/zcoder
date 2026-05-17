@@ -2,8 +2,7 @@ use super::{AppActionEvent, TuiEvent, TuiState};
 use crate::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use tokio::sync::mpsc::Sender;
-use zc_common::{ExecActionEvent, ExecStatusEvent};
-use zc_core::ExecutorTx;
+use zc_core::{ExecActionEvent, ExecStatusEvent, ExecutorTx};
 
 pub async fn handle_term_event(state: &mut TuiState, app_tx: &Sender<TuiEvent>, term_event: Event) {
 	if let Event::Key(key) = term_event
