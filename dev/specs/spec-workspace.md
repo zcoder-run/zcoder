@@ -159,7 +159,7 @@ The public entry point is:
 ```rust
 pub async fn start_tui(
 	executor_tx: ExecutorTx,
-	status_rx: Receiver<ExecStatusEvent>,
+	status_rx: ExecutorStatusRx,
 	initial_prompt: Option<String>,
 ) -> Result<()>;
 ```
@@ -190,7 +190,7 @@ The root binary depends on both `zc-core` and `zc-tui` because it wires the runt
 
 `zc-core` depends on `zc-common` for shared event contracts.
 
-`zc-tui` depends on `zc-common` for status event contracts and on `zc-core` for `ExecutorTx`.
+`zc-tui` depends on `zc-common` for status event contracts and on `zc-core` for `ExecutorTx` and `ExecutorStatusRx`.
 
 `zc-common` must not depend on `zc-core`, `zc-tui`, or the root binary.
 
