@@ -6,8 +6,6 @@ edition = "2024"
 [dependencies]
 # -- Sub Crates
 zc-common = { workspace = true }
-# -- Async
-tokio = { workspace = true }
 # -- AI
 genai = { workspace = true }
 udiffx = { workspace = true }

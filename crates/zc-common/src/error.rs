@@ -7,6 +7,10 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
+
+	// -- External
+	CrossfireSend(String),
+	CrossfireRecv(String),
 }
 
 // region:    --- Custom

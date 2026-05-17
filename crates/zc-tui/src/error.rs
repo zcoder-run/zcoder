@@ -8,6 +8,10 @@ pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
+	// -- Sub Crates
+	#[from]
+	ZcCommon(zc_common::Error),
+
 	// -- Externals
 	#[from]
 	Io(std::io::Error),

@@ -1,9 +1,9 @@
 // region:    --- Modules
 
 mod error;
-mod event;
 
 pub use error::{Error, Result};
-pub use event::*;
+
+pub mod event;
 
 // endregion: --- Modules

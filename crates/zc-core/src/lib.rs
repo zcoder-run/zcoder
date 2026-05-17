@@ -6,6 +6,6 @@ mod executor;
 
 pub use error::{Error, Result};
 pub use event::{ExecActionEvent, ExecStatusEvent};
-pub use executor::{Executor, ExecutorConfig, ExecutorTx};
+pub use executor::{Executor, ExecutorConfig, ExecutorStatusRx, ExecutorTx};
 
 // endregion: --- Modules

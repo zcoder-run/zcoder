@@ -1,6 +1,6 @@
 use crate::{Error, ExecActionEvent, ExecStatusEvent, Result};
 use genai::chat::{ChatMessage, ChatRequest};
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use zc_common::event::new_mpsc_bounded;
 
 // -- Consts (harcoded for now)
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite";
@@ -11,9 +11,15 @@ const DEFAULT_SRC_GLOBS: &[&str] = &[
 	"*.{py,ts,js,rs,html,css,json,toml,md}",
 ];
 
+pub type ExecutorTx = zc_common::event::Tx<ExecActionEvent>;
+pub type ExecutorStatusRx = zc_common::event::Rx<ExecStatusEvent>;
+
+type ExecutorActionRx = zc_common::event::Rx<ExecActionEvent>;
+type ExecutorStatusTx = zc_common::event::Tx<ExecStatusEvent>;
+
 pub struct Executor {
-	action_rx: Receiver<ExecActionEvent>,
-	status_tx: Sender<ExecStatusEvent>,
+	action_rx: ExecutorActionRx,
+	status_tx: ExecutorStatusTx,
 	// State needed for execution
 	genai_client: genai::Client,
 	base_chat_req: ChatRequest,
@@ -27,11 +33,6 @@ pub struct ExecutorConfig {
 	base_dir: String,
 	model: &'static str,
 	src_globs: &'static [&'static str],
-}
-
-#[derive(Clone)]
-pub struct ExecutorTx {
-	tx: Sender<ExecActionEvent>,
 }
 
 impl Default for ExecutorConfig {
@@ -61,16 +62,10 @@ impl ExecutorConfig {
 	}
 }
 
-impl ExecutorTx {
-	pub async fn send(&self, action: ExecActionEvent) -> Result<()> {
-		self.tx.send(action).await.map_err(|_| Error::custom("Executor channel closed"))
-	}
-}
-
 impl Executor {
-	pub fn new(config: ExecutorConfig) -> (Self, ExecutorTx, Receiver<ExecStatusEvent>) {
-		let (action_tx, action_rx) = mpsc::channel(100);
-		let (status_tx, status_rx) = mpsc::channel(100);
+	pub fn new(config: ExecutorConfig) -> (Self, ExecutorTx, ExecutorStatusRx) {
+		let (action_tx, action_rx) = new_mpsc_bounded::<ExecActionEvent>();
+		let (status_tx, status_rx) = new_mpsc_bounded::<ExecStatusEvent>();
 
 		let base_chat_req = ChatRequest::from_system(format!(
 			"You are a senior developer. User will give you instructions and context.\n\n{}",
@@ -87,13 +82,13 @@ impl Executor {
 				model: config.model,
 				src_globs: config.src_globs,
 			},
-			ExecutorTx { tx: action_tx },
+			action_tx,
 			status_rx,
 		)
 	}
 
-	pub async fn start(mut self) {
-		while let Some(action) = self.action_rx.recv().await {
+	pub async fn start(self) {
+		while let Ok(action) = self.action_rx.recv().await {
 			match action {
 				ExecActionEvent::RunPrompt(prompt) => {
 					let _ = self.handle_run_prompt(prompt).await;
