@@ -89,7 +89,7 @@ mod tests {
 		};
 
 		// -- Exec
-		let id = RunBmc::create(&mm, run_c)?;
+		let id = RunBmc::create(mm, run_c)?;
 
 		// -- Check
 		assert_eq!(id.as_i64(), 1);

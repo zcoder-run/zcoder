@@ -2,7 +2,7 @@ use crate::model::base::DbBmc;
 use crate::model::base::prep_fields::{
 	prep_fields_for_create, prep_fields_for_create_uid_included, prep_fields_for_update,
 };
-use crate::model::{Id, ModelManager, RelIds, Result};
+use crate::model::{EntityAction, Id, ModelEvent, ModelManager, RelIds, Result, get_model_bus};
 use modql::SqliteFromRow;
 use modql::field::{HasSqliteFields, SqliteFields};
 use modql::filter::ListOptions;
@@ -33,13 +33,13 @@ where
 
 	let count = db.exec(&sql, &*values)?;
 
-	// -- Publish Change Event
-	// get_hub().publish_sync(ModelEvent {
-	// 	entity: MC::ENTITY_TYPE,
-	// 	action: EntityAction::Updated,
-	// 	id: Some(id),
-	// 	rel_ids,
-	// });
+	// -- Publish Model Event
+	get_model_bus().publish(ModelEvent::new(
+		MC::ENTITY_TYPE,
+		EntityAction::Updated,
+		Some(id),
+		rel_ids,
+	));
 
 	Ok(count)
 }
@@ -92,7 +92,18 @@ RETURNING id",
 
 	let id: Option<i64> = db.exec_returning_as_optional(&sql, &*values)?;
 
-	Ok(id.map(|id| id.into()))
+	let id = id.map(Id::from);
+
+	if let Some(id) = id {
+		get_model_bus().publish(ModelEvent::new(
+			MC::ENTITY_TYPE,
+			EntityAction::Created,
+			Some(id),
+			RelIds::default(),
+		));
+	}
+
+	Ok(id)
 }
 
 pub fn create_with_rel_ids<MC>(mm: &ModelManager, fields: SqliteFields, rel_ids: RelIds) -> Result<Id>
@@ -131,16 +142,17 @@ where
 	let db = mm.db();
 
 	let id = db.exec_returning_num(&sql, &*values)?;
+	let id = Id::from(id);
 
-	// -- Publish Change Event
-	// get_hub().publish_sync(ModelEvent {
-	// 	entity: MC::ENTITY_TYPE,
-	// 	action: EntityAction::Created,
-	// 	id: Some(id.into()),
-	// 	rel_ids,
-	// });
+	// -- Publish Model Event
+	get_model_bus().publish(ModelEvent::new(
+		MC::ENTITY_TYPE,
+		EntityAction::Created,
+		Some(id),
+		rel_ids,
+	));
 
-	Ok(id.into())
+	Ok(id)
 }
 
 pub fn get<MC, E>(mm: &ModelManager, id: Id) -> Result<E>
@@ -247,12 +259,8 @@ where
 		Ok(ids)
 	})?;
 
-	// get_hub().publish_sync(ModelEvent {
-	// 	entity: MC::ENTITY_TYPE,
-	// 	action: EntityAction::Created,
-	// 	id: None,
-	// 	rel_ids,
-	// });
+	// -- Publish Model Event
+	get_model_bus().publish(ModelEvent::new(MC::ENTITY_TYPE, EntityAction::Created, None, rel_ids));
 
 	Ok(res)
 }

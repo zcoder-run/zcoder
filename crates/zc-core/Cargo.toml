@@ -3,6 +3,11 @@ name = "zc-core"
 version = "0.0.2-WIP"
 edition = "2024"
 
+[lints.rust]
+unsafe_code = "forbid"
+unused = { level = "allow", priority = -1 } # For exploratory dev.
+# missing_docs = "warn"
+
 [dependencies]
 # -- Sub Crates
 zc-common = { workspace = true }
@@ -14,6 +19,8 @@ rusqlite = { workspace = true }
 modql = { workspace = true }
 # -- FS
 simple-fs = { workspace = true }
+# -- Async
+tokio = { workspace = true }
 # -- Others
 macro_rules_attribute = { workspace = true }
 uuid = { workspace = true }

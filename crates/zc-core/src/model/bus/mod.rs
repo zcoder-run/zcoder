@@ -1,9 +1,9 @@
 // region:    --- Bus
 
-mod bus;
+mod bus_impl;
 mod model_event;
 
-pub use bus::*;
+pub use bus_impl::*;
 pub use model_event::*;
 
 // endregion: --- Bus
