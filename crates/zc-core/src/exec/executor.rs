@@ -1,4 +1,5 @@
 use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result};
+use crate::model::{ModelManager, RunBmc, RunForCreate, RunForUpdate};
 use genai::chat::{ChatMessage, ChatRequest};
 use zc_common::event::new_mpsc_bounded;
 
@@ -90,10 +91,12 @@ impl Executor {
 	pub async fn start(self) -> Result<()> {
 		let Self { mut action_rx, inner } = self;
 
+		let mm = crate::model::get_model_manager()?;
+
 		while let Ok(action) = action_rx.recv().await {
 			match action {
 				ExecCmd::RunPrompt(prompt) => {
-					let _ = inner.handle_run_prompt(prompt).await;
+					let _ = inner.handle_run_prompt(mm, prompt).await;
 				}
 			}
 		}
@@ -103,47 +106,82 @@ impl Executor {
 }
 
 impl ExecutorInner {
-	async fn handle_run_prompt(&self, prompt: String) -> Result<()> {
-		let _ = self.status_tx.send(ExecEvent::RunStart).await;
-
-		let mut chat_req = self.base_chat_req.clone();
-		chat_req = chat_req.append_message(ChatMessage::user(prompt));
-
-		// -- Load files Context
-		let files_context = udiffx::load_files_context(&self.base_dir, self.src_globs)?;
-		if let Some(files_context) = files_context {
-			chat_req = chat_req.append_message(ChatMessage::user(files_context));
-		}
-
-		// -- Execute Chat
-		let res = self.genai_client.exec_chat(self.model, chat_req, None).await;
-
-		let result = match res {
-			Ok(res) => {
-				let ai_response = res
-					.content
-					.into_first_text()
-					.ok_or_else(|| Error::custom("Should have response"))?;
-
-				// -- Process AI Response
-				let (file_changes, other_content) = udiffx::extract_file_changes(&ai_response, true)?;
-				let _change_statuses = udiffx::apply_file_changes(&self.base_dir, file_changes)?;
-
-				Ok(other_content.unwrap_or_default())
-			}
-			Err(err) => Err(Error::from(err)),
+	async fn handle_run_prompt(&self, mm: &ModelManager, prompt: String) -> Result<()> {
+		// -- Create in the DB
+		let run_c = RunForCreate {
+			prompt: Some(prompt.clone()),
+			answer: None,
 		};
+		let run_id = RunBmc::create(mm, run_c)?;
 
-		match result {
-			Ok(answer) => {
-				let _ = self.status_tx.send(ExecEvent::RunResult(answer)).await;
+		// -- Prep clones for the async block to avoid moving `self`
+		let status_tx = self.status_tx.clone();
+		let mut chat_req = self.base_chat_req.clone();
+		let base_dir = self.base_dir.clone(); // Assumes PathBuf or String that can clone
+		let src_globs = self.src_globs;
+		let genai_client = self.genai_client.clone(); // Assumes your client is cheaply cloneable (Arc-backed)
+		let model = self.model; // Assumes Copy/Clone (like &str or Copy enum)
+
+		// Use an async block with an explicit type annotation
+		let block_result: Result<()> = async move {
+			// -- Send RunStart
+			let _ = status_tx.send(ExecEvent::RunStart(run_id)).await;
+
+			// -- Exec AI
+			chat_req = chat_req.append_message(ChatMessage::user(prompt));
+
+			// load file context
+			let files_context = udiffx::load_files_context(&base_dir, src_globs)?;
+			if let Some(files_context) = files_context {
+				chat_req = chat_req.append_message(ChatMessage::user(files_context));
 			}
-			Err(err) => {
-				let _ = self.status_tx.send(ExecEvent::RunError(err.to_string())).await;
-			}
+
+			// execute chat
+			let res = genai_client.exec_chat(model, chat_req, None).await?;
+
+			let ai_response = res
+				.content
+				.into_first_text()
+				.ok_or_else(|| Error::custom("Should have response"))?;
+
+			// -- Process AI Response
+			let (file_changes, other_content) = udiffx::extract_file_changes(&ai_response, true)?;
+			let _change_statuses = udiffx::apply_file_changes(&base_dir, file_changes)?;
+			let answer = other_content.unwrap_or_default();
+
+			// -- Store response
+			RunBmc::update(
+				mm,
+				run_id,
+				RunForUpdate {
+					answer: Some(answer.clone()),
+					..Default::default()
+				},
+			)?;
+
+			// -- send the status event
+			let _ = status_tx.send(ExecEvent::RunEnd(run_id)).await;
+
+			Ok(()) // Explicitly return Ok from the async block
 		}
+		.await;
 
-		let _ = self.status_tx.send(ExecEvent::RunEnd).await;
+		// -- Handle error using your TODO pattern
+		if let Err(err) = block_result {
+			RunBmc::update(
+				mm,
+				run_id,
+				RunForUpdate {
+					error: Some(err.to_string()),
+					..Default::default()
+				},
+			);
+
+			let _ = self.status_tx.send(ExecEvent::RunError(run_id)).await;
+
+			// Optionally return the error or return Ok(()) depending on requirements
+			return Err(err);
+		}
 
 		Ok(())
 	}

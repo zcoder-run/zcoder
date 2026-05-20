@@ -17,6 +17,7 @@ pub struct Run {
 
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
+	pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Fields, SqliteFromRow)]
@@ -35,6 +36,7 @@ pub struct RunForCreate {
 pub struct RunForUpdate {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
+	pub error: Option<String>,
 }
 
 // endregion: --- Types

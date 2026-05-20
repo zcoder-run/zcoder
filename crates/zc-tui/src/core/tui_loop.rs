@@ -3,7 +3,9 @@ use crate::core::TuiState;
 use crate::event::{TuiEvent, TuiRx, TuiTx};
 use crate::{Result, view};
 use ratatui::DefaultTerminal;
+use tracing::debug;
 use zc_core::exec::ExecCmdTx;
+use zc_core::model::{RunBmc, get_model_manager};
 
 pub async fn run_ui_loop(
 	mut terminal: DefaultTerminal,
@@ -13,6 +15,7 @@ pub async fn run_ui_loop(
 	initial_prompt: Option<String>,
 ) -> Result<()> {
 	let mut state = TuiState::new(initial_prompt);
+	let mm = get_model_manager()?;
 
 	loop {
 		terminal.draw(|f| view::render(f, &state))?;
@@ -34,8 +37,20 @@ pub async fn run_ui_loop(
 				handle_exec_status(&mut state, status);
 			}
 
-			TuiEvent::Model(_model_event) => {
+			TuiEvent::Model(model_event) => {
 				// do nothing for now
+				// tracing::debug!("TUI GOT MODEL EVENT:\n{model_event:#?}")
+				match model_event.entity {
+					zc_core::model::EntityType::Run => {
+						if let Some(run_id) = model_event.id
+							&& let Ok(run) = RunBmc::get(mm, run_id)
+						{
+							state.set_last_answer(run.answer);
+						} else {
+							debug!("Error while model event (tui)")
+						}
+					}
+				}
 			}
 
 			TuiEvent::Tick | TuiEvent::DoRedraw => (),

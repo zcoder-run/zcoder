@@ -1,5 +1,7 @@
 // region:    --- ExecutorAction
 
+use crate::model::Id;
+
 #[derive(Debug)]
 pub enum ExecCmd {
 	RunPrompt(String),
@@ -15,10 +17,9 @@ pub type ExecCmdTx = zc_common::event::Tx<ExecCmd>;
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone)]
 pub enum ExecEvent {
-	RunStart,
-	RunEnd,
-	RunResult(String),
-	RunError(String),
+	RunStart(Id),
+	RunEnd(Id),
+	RunError(Id),
 }
 
 pub type ExecEventRx = zc_common::event::Rx<ExecEvent>;

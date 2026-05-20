@@ -1,6 +1,7 @@
 // region:    --- Modules
 
 mod app_event_handlers;
+mod model_loop;
 mod ping_timer;
 mod term_reader;
 mod tui_impl;

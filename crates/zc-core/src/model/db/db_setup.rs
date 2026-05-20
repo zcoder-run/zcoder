@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS run (
 
 		prompt      TEXT,
 		answer      TEXT,
+		error       TEXT,
 
 		ctime  INTEGER NOT NULL,
 		mtime  INTEGER NOT NULL,

@@ -1,5 +1,6 @@
 use super::{term_reader, tui_loop};
 use crate::Result;
+use crate::core::model_loop::run_model_loop;
 use crate::event::TuiEvent;
 use zc_common::event::new_mpsc_bounded;
 use zc_core::exec::{ExecCmdTx, ExecEventRx};
@@ -16,11 +17,15 @@ pub async fn start_tui(
 	// -- Create AppEvent channels
 	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>();
 
+	// -- Run the model loop
+	let tui_tx_for_model = tui_tx.clone();
+	tokio::spawn(async move { run_model_loop(tui_tx_for_model).await });
+
 	// -- Spawn status event forwarder
-	let tui_tx_for_status = tui_tx.clone();
+	let tui_tx_for_exec = tui_tx.clone();
 	tokio::spawn(async move {
 		while let Ok(status) = status_rx.recv().await {
-			if tui_tx_for_status.send(TuiEvent::Exec(status)).await.is_err() {
+			if tui_tx_for_exec.send(TuiEvent::Exec(status)).await.is_err() {
 				break;
 			}
 		}

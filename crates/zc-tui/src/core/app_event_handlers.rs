@@ -47,18 +47,16 @@ pub async fn handle_app_action(state: &mut TuiState, executor_tx: &ExecCmdTx, ac
 
 pub fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 	match status {
-		ExecEvent::RunStart => {
-			state.set_status("Sending to AI...".to_string());
+		ExecEvent::RunStart(id) => {
+			state.set_status(format!("Sending to AI (run: {id})..."));
 		}
-		ExecEvent::RunEnd => {
+		ExecEvent::RunEnd(_id) => {
 			state.set_waiting(false);
 			state.set_status("Idle".to_string());
 		}
-		ExecEvent::RunResult(answer) => {
-			state.set_last_answer(Some(answer));
-		}
-		ExecEvent::RunError(err) => {
-			state.set_last_error(Some(err));
+		ExecEvent::RunError(_id) => {
+			// TODO: Get error
+			// state.set_last_error(Some(err));
 		}
 	}
 }

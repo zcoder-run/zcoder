@@ -11,7 +11,7 @@ mod types;
 pub use bus::*;
 pub use entities::*;
 pub use error::{Error, Result};
-pub use model_manager::ModelManager;
+pub use model_manager::*;
 pub use types::*;
 
 // endregion: --- Modules

@@ -29,6 +29,10 @@ resolver = "3"
 # -- Sub Crates
 zc-core = { workspace = true }
 zc-tui = { workspace = true }
+# -- Tracing
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 # -- Async
 tokio = { workspace = true }
 # -- CLI
@@ -40,6 +44,10 @@ derive_more = { workspace = true }
 zc-core = { path = "crates/zc-core" }
 zc-common = { path = "crates/zc-common" }
 zc-tui = { path = "crates/zc-tui" }
+# -- Tracing
+tracing = "0.1"
+tracing-subscriber = {version = "0.3", features = ["env-filter"]}
+tracing-appender = "0.2"
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"

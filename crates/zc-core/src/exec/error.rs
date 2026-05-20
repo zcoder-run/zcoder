@@ -1,3 +1,4 @@
+use crate::model;
 use derive_more::{Display, From};
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -7,6 +8,9 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
+
+	#[from]
+	Model(model::Error),
 
 	// -- zc_common
 	Tx(String),
