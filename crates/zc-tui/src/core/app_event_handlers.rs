@@ -2,7 +2,7 @@ use crate::Result;
 use crate::core::TuiState;
 use crate::event::{AppActionEvent, TuiEvent, TuiTx};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use zc_core::event::{ExecAction, ExecActionTx, ExecEvent};
+use zc_core::exec::{ExecAction, ExecActionTx, ExecEvent};
 
 pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event: Event) {
 	if let Event::Key(key) = term_event

@@ -8,10 +8,11 @@ pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
-	// -- Externals
-	#[from]
-	Io(std::io::Error),
+	// -- zc_common
+	Tx(String),
+	Rx(String),
 
+	// -- External
 	#[from]
 	Genai(genai::Error),
 

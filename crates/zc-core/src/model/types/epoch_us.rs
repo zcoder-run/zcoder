@@ -1,4 +1,5 @@
-use crate::{Error, Result, ScalarStruct};
+use crate::ScalarStruct;
+use crate::model::{Error, Result};
 use macro_rules_attribute as mra;
 
 #[mra::derive(Debug, ScalarStruct!)]

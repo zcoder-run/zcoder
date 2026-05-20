@@ -2,7 +2,7 @@ use super::{term_reader, tui_loop};
 use crate::Result;
 use crate::event::TuiEvent;
 use zc_common::event::new_mpsc_bounded;
-use zc_core::event::{ExecActionTx, ExecutorStatusRx};
+use zc_core::exec::{ExecActionTx, ExecutorStatusRx};
 
 pub async fn start_tui(
 	executor_tx: ExecActionTx,

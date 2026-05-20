@@ -10,7 +10,7 @@ pub enum Error {
 
 	// -- Externals
 	#[from]
-	ZcCore(zc_core::Error),
+	ZcCore(zc_core::exec::Error),
 
 	#[from]
 	ZcTui(zc_tui::Error),

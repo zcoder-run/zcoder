@@ -4,7 +4,7 @@ mod error;
 use crate::cmd::CliCmd;
 use clap::Parser as _;
 pub use error::{Error, Result};
-use zc_core::{Executor, ExecutorConfig};
+use zc_core::exec::{Executor, ExecutorConfig};
 
 // -- Main
 #[tokio::main]

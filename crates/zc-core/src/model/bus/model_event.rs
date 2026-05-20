@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 // region:    --- Types
 
-#[derive(Clone, Deref)]
+#[derive(Debug, Clone, Deref)]
 pub struct ModelEvent(Arc<ModelEventData>);
 
 impl ModelEvent {

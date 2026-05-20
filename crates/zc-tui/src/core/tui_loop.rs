@@ -3,7 +3,7 @@ use crate::core::TuiState;
 use crate::event::{TuiEvent, TuiRx, TuiTx};
 use crate::{Result, view};
 use ratatui::DefaultTerminal;
-use zc_core::event::ExecActionTx;
+use zc_core::exec::ExecActionTx;
 
 pub async fn run_ui_loop(
 	mut terminal: DefaultTerminal,
@@ -32,6 +32,10 @@ pub async fn run_ui_loop(
 
 			TuiEvent::Exec(status) => {
 				handle_exec_status(&mut state, status);
+			}
+
+			TuiEvent::Model(_model_event) => {
+				// do nothing for now
 			}
 
 			TuiEvent::Tick | TuiEvent::DoRedraw => (),

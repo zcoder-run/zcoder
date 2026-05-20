@@ -17,7 +17,10 @@ pub enum Error {
 	Io(std::io::Error),
 
 	#[from]
-	ZcCore(zc_core::Error),
+	ZcCoreModel(zc_core::model::Error),
+
+	#[from]
+	ZcExecModel(zc_core::exec::Error),
 }
 
 // region:    --- Custom

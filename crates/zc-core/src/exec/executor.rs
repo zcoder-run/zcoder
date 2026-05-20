@@ -1,5 +1,6 @@
-use crate::event::{ExecActionRx, ExecActionTx, ExecutorStatusRx, ExecutorStatusTx};
-use crate::{Error, ExecAction, ExecEvent, Result};
+use crate::exec::{
+	Error, ExecAction, ExecActionRx, ExecActionTx, ExecEvent, ExecutorStatusRx, ExecutorStatusTx, Result,
+};
 use genai::chat::{ChatMessage, ChatRequest};
 use zc_common::event::new_mpsc_bounded;
 
