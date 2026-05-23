@@ -15,7 +15,7 @@ zc-common = { workspace = true }
 genai = { workspace = true }
 udiffx = { workspace = true }
 # -- DB
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, features = ["uuid"] }
 modql = { workspace = true }
 # -- FS
 simple-fs = { workspace = true }

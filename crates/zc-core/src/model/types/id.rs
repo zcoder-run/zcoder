@@ -32,3 +32,36 @@ impl TryFrom<String> for Id {
 		Ok(Id(uuid))
 	}
 }
+
+// region:    --- Tests
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use rusqlite::{Connection, params};
+
+	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
+
+	#[test]
+	fn test_sqlite_uuid_blob_roundtrip() -> Result<()> {
+		let con = Connection::open_in_memory()?;
+		let uuid = Uuid::now_v7();
+
+		con.execute("CREATE TABLE item (id BLOB PRIMARY KEY) STRICT, WITHOUT ROWID", ())?;
+		con.execute("INSERT INTO item (id) VALUES (?1)", params![&uuid])?;
+
+		let stored_id: Id = con.query_row("SELECT id FROM item LIMIT 1", [], |row| row.get(0))?;
+		let selected_id: Id = con.query_row("SELECT id FROM item WHERE id = ?1", params![&stored_id], |row| {
+			row.get(0)
+		})?;
+		let stored_bytes: Vec<u8> = con.query_row("SELECT id FROM item LIMIT 1", [], |row| row.get(0))?;
+
+		assert_eq!(stored_id.as_uuid(), &uuid);
+		assert_eq!(selected_id.as_uuid(), &uuid);
+		assert_eq!(stored_bytes.len(), 16);
+
+		Ok(())
+	}
+}
+
+// endregion: --- Tests

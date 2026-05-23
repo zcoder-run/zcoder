@@ -57,7 +57,7 @@ clap = { version = "4", features = ["derive"] }
 ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
 # -- AI
-genai = { version = "=0.6.0-beta.21" }
+genai = { version = "0.6" }
 udiffx = { version = "0.1", features = ["prompt"]}
 # -- DB
 rusqlite = { version = "0.39.0", features = ["bundled", "uuid", "serde_json", "serialize"] }
