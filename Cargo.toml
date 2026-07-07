@@ -5,8 +5,8 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "AI coding CLI — very early stage"
 keywords = ["coding-harness","coding-ai"]
-homepage = "https://github.com/jeremychone/zcoder"
-repository = "https://github.com/jeremychone/zcoder"
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
 
 [lints.rust]
 unsafe_code = "forbid"
