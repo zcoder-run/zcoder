@@ -1,6 +1,6 @@
 // region:    --- Modules
 
-mod prep_fields;
+pub mod prep_fields;
 
 mod crud_fns;
 mod db_bmc;

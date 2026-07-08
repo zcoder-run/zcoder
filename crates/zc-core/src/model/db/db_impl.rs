@@ -71,15 +71,12 @@ impl Db {
 	/// Perform a sql exec and returns the first value of the first row and
 	/// cast it to the type T
 	/// ```
-	/// let sql = r#"
-	/// SELECT conv.cfile_id
-	/// FROM conv
-	/// JOIN space ON conv.space_id = space.id
-	/// WHERE space.id = ?1
-	/// ORDER BY conv.last_open DESC
-	/// LIMIT 1;
-	/// "#;
-	/// let cfile_id: Option<Id> = mm.main_db().exec_as(sql, (space_id,))?;
+	/// # use zc_core::Db;
+	/// let db = Db::new().unwrap();
+	/// db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)", []).unwrap();
+	/// db.exec("INSERT INTO t (id, name) VALUES (42, 'foo')", []).unwrap();
+	/// let id: i64 = db.exec_returning_as("SELECT id FROM t WHERE name = ?1", ["foo"]).unwrap();
+	/// assert_eq!(id, 42);
 	/// ```
 	pub fn exec_returning_as<T: FromSql>(&self, sql: &str, params: impl Params) -> Result<T> {
 		let conn_g = self.con.lock()?;

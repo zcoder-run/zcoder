@@ -13,5 +13,6 @@ pub use entities::*;
 pub use error::{Error, Result};
 pub use model_manager::*;
 pub use types::*;
+pub use db::Db;
 
 // endregion: --- Modules

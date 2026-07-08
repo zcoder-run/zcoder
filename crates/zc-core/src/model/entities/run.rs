@@ -16,6 +16,7 @@ pub struct Run {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 	pub error: Option<String>,
+	pub aixc_idx_seq: i64,
 }
 
 #[derive(Debug, Clone, Fields, SqliteFromRow)]

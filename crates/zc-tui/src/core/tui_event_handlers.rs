@@ -108,6 +108,9 @@ pub fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -> Resu
 				debug!("Error while model event (tui)")
 			}
 		}
+		zc_core::model::EntityType::Aixc => {
+			// do nothing for now
+		}
 	}
 	Ok(())
 }
