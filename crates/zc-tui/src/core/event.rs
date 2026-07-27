@@ -1,12 +1,12 @@
 use crossterm::event::Event;
-use zc_common::event::{Mp, Sc};
+use zc_common::event::{MpscRx, MpscTx};
 use zc_core::exec::ExecEvent;
 use zc_core::model::ModelEvent;
 
 // region:    --- Tui Event
 
-pub type TuiTx = Mp<TuiEvent>;
-pub type TuiRx = Sc<TuiEvent>;
+pub type TuiTx = MpscTx<TuiEvent>;
+pub type TuiRx = MpscRx<TuiEvent>;
 
 #[derive(Debug, Clone)]
 pub enum TuiEvent {
@@ -29,6 +29,6 @@ pub enum AppActionEvent {
 
 // region:    --- Ping Event
 
-pub type PingTimerTx = Mp<()>;
+pub type PingTimerTx = MpscTx<()>;
 
 // endregion: --- Ping Event

@@ -1,28 +1,16 @@
 use crate::event::error::{Error, Result};
-use crossfire::mpsc::Array;
-use crossfire::{AsyncRx, AsyncTx, MAsyncRx, MAsyncTx, TryRecvError, TrySendError};
+use crossfire::{AsyncRx, AsyncTx, MAsyncRx, MAsyncTx, TryRecvError, TrySendError, mpmc, mpsc, spsc};
 
-// region:    --- Types
+// region:    --- Mpsc Implementations
 
-/// MultiProducer sender. Clonable, allowing multiple senders.
+/// MpSc MultiProducer sender. Clonable, allowing multiple senders.
 #[derive(Clone)]
-pub struct Mp<T: Send + 'static>(pub(super) MAsyncTx<Array<T>>);
+pub struct MpscTx<T: Send + 'static>(pub(super) MAsyncTx<mpsc::Array<T>>);
 
-/// SingleProducer sender. Not clonable.
-pub struct Sp<T: Send + 'static>(pub(super) AsyncTx<Array<T>>);
+/// MpSc SingleConsumer receiver. Not clonable.
+pub struct MpscRx<T: Send + 'static>(pub(super) AsyncRx<mpsc::Array<T>>);
 
-/// SingleConsumer receiver. Not clonable.
-pub struct Sc<T: Send + 'static>(pub(super) AsyncRx<Array<T>>);
-
-/// MultiConsumer receiver. Clonable, allowing competing consumers.
-#[derive(Clone)]
-pub struct Mc<T: Send + 'static>(pub MAsyncRx<Array<T>>);
-
-// endregion: --- Types
-
-// region:    --- Implementation Mp<T>
-
-impl<T> Mp<T>
+impl<T> MpscTx<T>
 where
 	T: Send + 'static,
 {
@@ -33,23 +21,70 @@ where
 		self.0.send(message).await.map_err(|e| Error::Tx(e.to_string()))
 	}
 
+	/// Sends on the current thread, blocking only when the bounded channel is full.
+	///
+	/// The non-blocking attempt avoids converting sender modes while capacity is
+	/// available. On backpressure, the recovered message is sent through a cloned
+	/// blocking handle, preserving this sender for subsequent asynchronous use.
 	pub fn send_sync(&self, message: T) -> Result<()> {
 		match self.0.try_send(message) {
 			Ok(()) => Ok(()),
-			Err(TrySendError::Full(message)) => {
-				let blocking_sender = self.0.clone().into_blocking();
-				blocking_sender.send(message).map_err(|e| Error::Tx(e.to_string()))
-			}
+			Err(TrySendError::Full(message)) => self
+				.0
+				.clone()
+				.into_blocking()
+				.send(message)
+				.map_err(|e| Error::Tx(e.to_string())),
 			Err(TrySendError::Disconnected(_)) => Err(Error::Tx("Channel disconnected".to_string())),
 		}
 	}
 }
 
-// endregion: --- Implementation Mp<T>
+impl<T> MpscRx<T>
+where
+	T: Send + 'static,
+{
+	/// Mutable access keeps the receive future `Send` without requiring this single-consumer receiver to be `Sync`.
+	pub async fn recv(&mut self) -> Result<T> {
+		self.0.recv().await.map_err(|e| Error::Rx(e.to_string()))
+	}
 
-// region:    --- Implementation Sp<T>
+	/// Attempts to receive without blocking, returning `None` while the channel is empty.
+	pub fn try_recv(&self) -> Result<Option<T>> {
+		match self.0.try_recv() {
+			// A message was immediately available.
+			Ok(value) => Ok(Some(value)),
 
-impl<T> Sp<T>
+			// An empty, connected channel may receive a message later.
+			Err(TryRecvError::Empty) => Ok(None),
+
+			// No message can arrive after all senders disconnect.
+			Err(TryRecvError::Disconnected) => Err(Error::Rx("Channel disconnected".to_string())),
+		}
+	}
+}
+
+// endregion: --- Mpsc Implementations
+
+// region:    --- Mpmc Implementations
+
+/// MpMc MultiProducer MultiConsumer sender. Clonable, allowing multiple senders.
+#[derive(Clone)]
+pub struct MpmcTx<T: Send + 'static>(pub(super) MAsyncTx<mpmc::Array<T>>);
+
+/// MpMc MultiConsumer receiver. Not clonable.
+pub struct MpmcRx<T: Send + 'static>(pub(super) MAsyncRx<mpmc::Array<T>>);
+
+impl<T> Clone for MpmcRx<T>
+where
+	T: Send + 'static,
+{
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl<T> MpmcTx<T>
 where
 	T: Send + 'static,
 {
@@ -60,49 +95,92 @@ where
 		self.0.send(message).await.map_err(|e| Error::Tx(e.to_string()))
 	}
 
-	// TODO: needs to implement send_sync
+	/// Sends on the current thread, blocking only when the bounded channel is full.
+	///
+	/// The non-blocking attempt avoids converting sender modes while capacity is
+	/// available. On backpressure, the recovered message is sent through a cloned
+	/// blocking handle, preserving this sender for subsequent asynchronous use.
+	pub fn send_sync(&self, message: T) -> Result<()> {
+		match self.0.try_send(message) {
+			Ok(()) => Ok(()),
+			Err(TrySendError::Full(message)) => self
+				.0
+				.clone()
+				.into_blocking()
+				.send(message)
+				.map_err(|e| Error::Tx(e.to_string())),
+			Err(TrySendError::Disconnected(_)) => Err(Error::Tx("Channel disconnected".to_string())),
+		}
+	}
 }
 
-// endregion: --- Implementation Sp<T>
-
-// region:    --- Implementation Sc<T>
-
-impl<T> Sc<T>
+impl<T> MpmcRx<T>
 where
 	T: Send + 'static,
 {
-	pub async fn recv(&mut self) -> Result<T> {
+	pub async fn recv(&self) -> Result<T> {
 		self.0.recv().await.map_err(|e| Error::Rx(e.to_string()))
 	}
 
+	/// Attempts to receive without blocking, returning `None` while the channel is empty.
 	pub fn try_recv(&self) -> Result<Option<T>> {
 		match self.0.try_recv() {
+			// A message was immediately available.
 			Ok(value) => Ok(Some(value)),
+
+			// An empty, connected channel may receive a message later.
 			Err(TryRecvError::Empty) => Ok(None),
+
+			// No message can arrive after all senders disconnect.
 			Err(TryRecvError::Disconnected) => Err(Error::Rx("Channel disconnected".to_string())),
 		}
 	}
 }
 
-// endregion: --- Implementation Sc<T>
+// endregion: --- Mpmc Implementations
 
-// region:    --- Implementation Mc<T>
+// region:    --- Spsc Implementations
 
-impl<T> Mc<T>
+/// SpSc SingleProducer sender. Not clonable.
+pub struct SpscTx<T: Send + 'static>(pub(super) AsyncTx<spsc::Array<T>>);
+
+/// SpSc SingleConsumer receiver. Not clonable.
+pub struct SpscRx<T: Send + 'static>(pub(super) AsyncRx<spsc::Array<T>>);
+
+impl<T> SpscTx<T>
 where
 	T: Send + 'static,
 {
+	pub async fn send(&self, message: T) -> Result<()>
+	where
+		T: Unpin,
+	{
+		self.0.send(message).await.map_err(|e| Error::Tx(e.to_string()))
+	}
+}
+
+impl<T> SpscRx<T>
+where
+	T: Send + 'static,
+{
+	/// Mutable access keeps the receive future `Send` without requiring this single-consumer receiver to be `Sync`.
 	pub async fn recv(&mut self) -> Result<T> {
 		self.0.recv().await.map_err(|e| Error::Rx(e.to_string()))
 	}
 
+	/// Attempts to receive without blocking, returning `None` while the channel is empty.
 	pub fn try_recv(&self) -> Result<Option<T>> {
 		match self.0.try_recv() {
+			// A message was immediately available.
 			Ok(value) => Ok(Some(value)),
+
+			// An empty, connected channel may receive a message later.
 			Err(TryRecvError::Empty) => Ok(None),
+
+			// No message can arrive after the sender disconnects.
 			Err(TryRecvError::Disconnected) => Err(Error::Rx("Channel disconnected".to_string())),
 		}
 	}
 }
 
-// endregion: --- Implementation Mc<T>
+// endregion: --- Spsc Implementations

@@ -11,7 +11,7 @@ mod event_xpxc;
 
 pub use error::{Error, Result};
 pub use event_new::*;
-pub use event_once::{OnceSc, OnceSp};
-pub use event_xpxc::{Mc, Mp, Sc, Sp};
+pub use event_once::{OnceRx, OnceTx};
+pub use event_xpxc::*;
 
 // endregion: --- Re-exports
