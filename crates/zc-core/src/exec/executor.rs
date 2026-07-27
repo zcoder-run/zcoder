@@ -1,7 +1,7 @@
 use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result};
 use crate::model::{ModelManager, RunBmc, RunForCreate, RunForUpdate};
 use genai::chat::{ChatMessage, ChatRequest};
-use zc_common::event::new_mpsc_bounded;
+use zc_common::event_base::new_mpsc_bounded;
 
 // -- Consts (harcoded for now)
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite";
@@ -63,8 +63,8 @@ impl ExecutorConfig {
 
 impl Executor {
 	pub fn new(config: ExecutorConfig) -> Result<(Self, ExecCmdTx, ExecEventRx)> {
-		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>(1000)?;
-		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>(1000)?;
+		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>("executor_channel", 1000)?;
+		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
 
 		let base_chat_req = ChatRequest::from_system(format!(
 			"You are a senior developer. User will give you instructions and context.\n\n{}",

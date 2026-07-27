@@ -4,7 +4,7 @@ mod error;
 
 pub use error::{Error, Result};
 
-pub mod event;
+pub mod event_base;
 pub mod time;
 
 // endregion: --- Modules

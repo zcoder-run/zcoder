@@ -2,7 +2,7 @@ use super::event::TuiEvent;
 use super::{term_reader, tui_loop};
 use crate::Result;
 use crate::core::model_loop::run_model_loop;
-use zc_common::event::new_mpsc_bounded;
+use zc_common::event_base::new_mpsc_bounded;
 use zc_core::exec::{ExecCmdTx, ExecEventRx};
 
 pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial_prompt: Option<String>) -> Result<()> {
@@ -11,7 +11,7 @@ pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial
 	terminal.clear()?;
 
 	// -- Create AppEvent channels
-	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>(1000)?;
+	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>("tui_channel", 1000)?;
 
 	// -- Run the model loop
 	let tui_tx_for_model = tui_tx.clone();

@@ -12,7 +12,7 @@ pub enum Error {
 	#[from]
 	ZcCommon(zc_common::Error),
 	#[from]
-	CommonEvent(zc_common::event::Error),
+	CommonEvent(zc_common::event_base::EventBaseError),
 
 	// -- Externals
 	#[from]

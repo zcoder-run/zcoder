@@ -1,5 +1,5 @@
 use crossterm::event::Event;
-use zc_common::event::{MpscRx, MpscTx};
+use zc_common::event_base::{MpscRx, MpscTx};
 use zc_core::exec::ExecEvent;
 use zc_core::model::ModelEvent;
 

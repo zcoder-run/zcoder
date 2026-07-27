@@ -2,7 +2,7 @@ use super::event::TuiEvent;
 use crossterm::event::EventStream;
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
-use zc_common::event::MpscTx;
+use zc_common::event_base::MpscTx;
 
 pub fn run_term_reader(tui_tx: MpscTx<TuiEvent>) {
 	tokio::spawn(async move {
