@@ -11,6 +11,8 @@ pub enum Error {
 	// -- Sub Crates
 	#[from]
 	ZcCommon(zc_common::Error),
+	#[from]
+	CommonEvent(zc_common::event::Error),
 
 	// -- Externals
 	#[from]

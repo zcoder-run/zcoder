@@ -11,7 +11,7 @@ pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial
 	terminal.clear()?;
 
 	// -- Create AppEvent channels
-	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>();
+	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>(1000)?;
 
 	// -- Run the model loop
 	let tui_tx_for_model = tui_tx.clone();

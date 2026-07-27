@@ -1,10 +1,11 @@
 use super::event::{PingTimerTx, TuiEvent, TuiTx};
+use crate::Result;
 use std::time::Duration;
 use zc_common::event::new_mpsc_bounded;
 
 #[allow(unused)]
-pub fn start_ping_timer(tui_tx: TuiTx, tick_interval: Duration) -> PingTimerTx {
-	let (stop_tx, mut stop_rx) = new_mpsc_bounded::<()>();
+pub fn start_ping_timer(tui_tx: TuiTx, tick_interval: Duration) -> Result<PingTimerTx> {
+	let (stop_tx, mut stop_rx) = new_mpsc_bounded::<()>(1000)?;
 
 	tokio::spawn(async move {
 		let mut interval = tokio::time::interval(tick_interval);
@@ -23,5 +24,5 @@ pub fn start_ping_timer(tui_tx: TuiTx, tick_interval: Duration) -> PingTimerTx {
 		}
 	});
 
-	stop_tx
+	Ok(stop_tx)
 }

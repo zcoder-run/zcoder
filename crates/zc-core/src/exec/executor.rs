@@ -62,16 +62,16 @@ impl ExecutorConfig {
 }
 
 impl Executor {
-	pub fn new(config: ExecutorConfig) -> (Self, ExecCmdTx, ExecEventRx) {
-		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>();
-		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>();
+	pub fn new(config: ExecutorConfig) -> Result<(Self, ExecCmdTx, ExecEventRx)> {
+		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>(1000)?;
+		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>(1000)?;
 
 		let base_chat_req = ChatRequest::from_system(format!(
 			"You are a senior developer. User will give you instructions and context.\n\n{}",
 			udiffx::prompt_file_changes()
 		));
 
-		(
+		Ok((
 			Self {
 				action_rx,
 				inner: ExecutorInner {
@@ -85,7 +85,7 @@ impl Executor {
 			},
 			action_tx,
 			status_rx,
-		)
+		))
 	}
 
 	pub async fn start(self) -> Result<()> {

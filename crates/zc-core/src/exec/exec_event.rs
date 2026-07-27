@@ -7,8 +7,8 @@ pub enum ExecCmd {
 	RunPrompt(String),
 }
 
-pub type ExecCmdRx = zc_common::event::Rx<ExecCmd>;
-pub type ExecCmdTx = zc_common::event::Tx<ExecCmd>;
+pub type ExecCmdRx = zc_common::event::Sc<ExecCmd>;
+pub type ExecCmdTx = zc_common::event::Mp<ExecCmd>;
 
 // endregion: --- ExecutorAction
 
@@ -22,7 +22,7 @@ pub enum ExecEvent {
 	RunError(Id),
 }
 
-pub type ExecEventRx = zc_common::event::Rx<ExecEvent>;
-pub type ExecEventTx = zc_common::event::Tx<ExecEvent>;
+pub type ExecEventRx = zc_common::event::Sc<ExecEvent>;
+pub type ExecEventTx = zc_common::event::Mp<ExecEvent>;
 
 // endregion: --- ExecStatus

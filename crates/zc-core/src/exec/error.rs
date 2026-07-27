@@ -15,6 +15,8 @@ pub enum Error {
 	// -- zc_common
 	Tx(String),
 	Rx(String),
+	#[from]
+	Event(zc_common::event::Error),
 
 	// -- External
 	#[from]

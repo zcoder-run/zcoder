@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
 
 	// -- Executor setup
 	let executor_config = ExecutorConfig::default().with_base_dir(base_dir);
-	let (executor, executor_tx, status_rx) = Executor::new(executor_config);
+	let (executor, executor_tx, status_rx) = Executor::new(executor_config)?;
 
 	tokio::spawn(async move { executor.start().await });
 

@@ -2,9 +2,9 @@ use super::event::TuiEvent;
 use crossterm::event::EventStream;
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
-use zc_common::event::Tx;
+use zc_common::event::Mp;
 
-pub fn run_term_reader(tui_tx: Tx<TuiEvent>) {
+pub fn run_term_reader(tui_tx: Mp<TuiEvent>) {
 	tokio::spawn(async move {
 		let mut reader = EventStream::new();
 
