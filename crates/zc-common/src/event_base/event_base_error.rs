@@ -3,7 +3,7 @@
 use derive_more::Display;
 
 /// Result returned by event-base channel operations.
-pub type EventBaseResultResult<T> = core::result::Result<T, EventBaseError>;
+pub type EventBaseResult<T> = core::result::Result<T, EventBaseError>;
 
 /// A channel configuration error or peer-disconnection signal.
 ///

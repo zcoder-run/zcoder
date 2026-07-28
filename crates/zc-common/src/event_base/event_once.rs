@@ -1,7 +1,21 @@
 //! Single-use event-base channel endpoints.
 
-use crate::event_base::event_base_error::{EventBaseError, EventBaseResultResult};
+use crate::event_base::event_base_error::{EventBaseError, EventBaseResult};
 use crossfire::{TryRecvError, oneshot};
+
+// region:    --- Factory Functions
+
+/// Creates a single-use asynchronous channel.
+///
+/// `name` is retained by both endpoints for diagnostics and disconnection
+/// errors.
+#[allow(unused)]
+pub fn new_once<T>(name: &'static str) -> (OnceTx<T>, OnceRx<T>) {
+	let (tx, rx) = oneshot::oneshot();
+	(OnceTx { inner: tx, name }, OnceRx { inner: rx, name })
+}
+
+// endregion: --- Factory Functions
 
 // region:    --- Implementation OnceTx<T>
 
@@ -26,6 +40,11 @@ impl<T> OnceTx<T> {
 	/// Sends the message without delivery status because the underlying one-shot sender does not report a dropped receiver.
 	pub fn send(self, message: T) {
 		self.inner.send(message);
+	}
+
+	/// Returns whether the receiver has disconnected.
+	pub fn is_disconnected(&self) -> bool {
+		self.inner.is_disconnected()
 	}
 }
 
@@ -55,7 +74,7 @@ impl<T> OnceRx<T> {
 	///
 	/// Returns [`EventBaseError::RxDisconnected`] when the sender is dropped
 	/// before sending.
-	pub async fn recv(self) -> EventBaseResultResult<T> {
+	pub async fn recv(self) -> EventBaseResult<T> {
 		self.inner
 			.recv_async()
 			.await
@@ -63,12 +82,17 @@ impl<T> OnceRx<T> {
 	}
 
 	/// Attempts to receive without blocking, returning `None` while the channel is empty.
-	pub fn try_recv(&mut self) -> EventBaseResultResult<Option<T>> {
+	pub fn try_recv(&mut self) -> EventBaseResult<Option<T>> {
 		match self.inner.try_recv() {
 			Ok(value) => Ok(Some(value)),
 			Err(TryRecvError::Empty) => Ok(None),
 			Err(TryRecvError::Disconnected) => Err(EventBaseError::RxDisconnected { name: self.name }),
 		}
+	}
+
+	/// Returns whether the receiver has disconnected.
+	pub fn is_empty(&self) -> bool {
+		self.inner.is_empty()
 	}
 }
 
