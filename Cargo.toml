@@ -1,10 +1,12 @@
 [package]
 name = "zcoder"
 version = "0.0.2-WIP"
+description = "AI coding CLI — very early stage"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "AI coding CLI — very early stage"
+categories = [ "development-tools" ]
 keywords = ["coding-harness","coding-ai"]
+authors = ["Jeremy Chone"]
 homepage = "https://github.com/zcoder-run/zcoder"
 repository = "https://github.com/zcoder-run/zcoder"
 
