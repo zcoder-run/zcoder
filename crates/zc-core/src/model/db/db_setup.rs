@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS run (
 		mtime  INTEGER NOT NULL,
 
 		model       TEXT,
-		aixc_idx_seq INTEGER NOT NULL DEFAULT 0
+		air_idx_seq INTEGER NOT NULL DEFAULT 0
 ) STRICT, WITHOUT ROWID",
 );
 
-const AIXC_TABLE: (&str, &str) = (
-	"aixc",
+const AIR_TABLE: (&str, &str) = (
+	"air",
 	"
 CREATE TABLE IF NOT EXISTS aixc (
 		id          BLOB PRIMARY KEY,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS aixc (
 ) STRICT, WITHOUT ROWID",
 );
 
-const ALL_MAIN_TABLES: &[(&str, &str)] = &[RUN_TABLE, AIXC_TABLE];
+const ALL_MAIN_TABLES: &[(&str, &str)] = &[RUN_TABLE, AIR_TABLE];
 
 // endregion: --- Main Tables
 

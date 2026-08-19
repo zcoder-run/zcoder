@@ -1,7 +1,7 @@
 // region:    --- Modules
 
-use crate::model::base::prep_fields::prep_fields_for_create;
-use crate::model::base::{self, DbBmc};
+use crate::model::support::prep_fields::prep_fields_for_create;
+use crate::model::support::{self, DbBmc};
 use crate::model::{EntityAction, EntityType, EpochUs, Id, ModelEvent, ModelManager, RelIds, Result, get_model_bus};
 use modql::SqliteFromRow;
 use modql::field::{Fields, HasSqliteFields, SqliteField};
@@ -11,8 +11,9 @@ use modql::filter::ListOptions;
 
 // region:    --- Types
 
+/// AI Request
 #[derive(Debug, Clone, Fields, SqliteFromRow)]
-pub struct Aixc {
+pub struct Air {
 	pub id: Id,
 
 	pub run_id: Id,
@@ -47,7 +48,7 @@ pub struct Aixc {
 }
 
 #[derive(Debug, Clone, Fields, SqliteFromRow)]
-pub struct AixcForCreate {
+pub struct AirForCreate {
 	pub run_id: Id,
 
 	pub label: Option<String>,
@@ -76,7 +77,7 @@ pub struct AixcForCreate {
 }
 
 #[derive(Debug, Default, Clone, Fields, SqliteFromRow)]
-pub struct AixcForUpdate {
+pub struct AirForUpdate {
 	pub label: Option<String>,
 
 	pub model_ov: Option<String>,
@@ -104,7 +105,7 @@ pub struct AixcForUpdate {
 
 /// End state for an AI execution.
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
-pub enum AixcEndState {
+pub enum AirEndState {
 	#[display("success")]
 	Success,
 	#[display("error")]
@@ -117,34 +118,34 @@ pub enum AixcEndState {
 
 // region:    --- Bmc
 
-pub struct AixcBmc;
+pub struct AirBmc;
 
-impl DbBmc for AixcBmc {
+impl DbBmc for AirBmc {
 	const TABLE: &'static str = "aixc";
 	const ENTITY_TYPE: EntityType = EntityType::Aixc;
 }
 
 /// Basic CRUD
-impl AixcBmc {
-	pub fn create(mm: &ModelManager, aixc_c: AixcForCreate) -> Result<Id> {
-		let run_id = aixc_c.run_id;
-		Self::create_next(mm, run_id, aixc_c)
+impl AirBmc {
+	pub fn create(mm: &ModelManager, air_c: AirForCreate) -> Result<Id> {
+		let run_id = air_c.run_id;
+		Self::create_next(mm, run_id, air_c)
 	}
 
-	/// Atomically increments the Run's `aixc_idx_seq`, then creates a new Aixc record
+	/// Atomically increments the Run's `air_idx_seq`, then creates a new Aixc record
 	/// with that sequence number as `idx`.
-	pub fn create_next(mm: &ModelManager, run_id: Id, aixc_c: AixcForCreate) -> Result<Id> {
+	pub fn create_next(mm: &ModelManager, run_id: Id, air_c: AirForCreate) -> Result<Id> {
 		let db = mm.db();
 		let rel_ids = RelIds { run_id: Some(run_id) };
 
 		let id = db.exec_in_tx(|tx_db| {
-			// Atomically increment aixc_idx_seq on the Run record
-			let sql = "UPDATE run SET aixc_idx_seq = aixc_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING aixc_idx_seq";
+			// Atomically increment air_idx_seq on the Run record
+			let sql = "UPDATE run SET air_idx_seq = air_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING air_idx_seq";
 			let now = zc_common::time::now_micro();
 			let new_idx: i64 = tx_db.exec_returning_as(sql, (run_id, now))?;
 
-			// Build fields for the Aixc record (includes run_id from aixc_c)
-			let mut fields = aixc_c.sqlite_not_none_fields();
+			// Build fields for the Aixc record (includes run_id from air_c)
+			let mut fields = air_c.sqlite_not_none_fields();
 			fields.push(SqliteField::new("idx", new_idx));
 			prep_fields_for_create::<Self>(&mut fields);
 
@@ -173,19 +174,19 @@ impl AixcBmc {
 	}
 
 	#[allow(unused)]
-	pub fn update(mm: &ModelManager, id: Id, aixc_u: AixcForUpdate) -> Result<usize> {
-		let fields = aixc_u.sqlite_not_none_fields();
-		base::update::<Self>(mm, id, fields)
+	pub fn update(mm: &ModelManager, id: Id, air_u: AirForUpdate) -> Result<usize> {
+		let fields = air_u.sqlite_not_none_fields();
+		support::update::<Self>(mm, id, fields)
 	}
 
 	#[allow(unused)]
-	pub fn get(mm: &ModelManager, id: Id) -> Result<Aixc> {
-		base::get::<Self, _>(mm, id)
+	pub fn get(mm: &ModelManager, id: Id) -> Result<Air> {
+		support::get::<Self, _>(mm, id)
 	}
 
 	#[allow(unused)]
-	pub fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Aixc>> {
-		base::list::<Self, _>(mm, list_options, None)
+	pub fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Air>> {
+		support::list::<Self, _>(mm, list_options, None)
 	}
 }
 
@@ -202,8 +203,8 @@ mod tests {
 
 	// region:    --- Support
 
-	fn aixc_for_create(run_id: Id) -> AixcForCreate {
-		AixcForCreate {
+	fn air_for_create(run_id: Id) -> AirForCreate {
+		AirForCreate {
 			run_id,
 			label: None,
 			model_ov: None,
@@ -229,7 +230,7 @@ mod tests {
 	// endregion: --- Support
 
 	#[test]
-	fn test_model_aixc_bmc_create_next() -> Result<()> {
+	fn test_model_air_bmc_create_next() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
@@ -238,28 +239,28 @@ mod tests {
 		};
 		let run_id = RunBmc::create(mm, run_c)?;
 
-		let mut aixc_c = aixc_for_create(run_id);
-		aixc_c.label = Some("first call".to_string());
-		aixc_c.model_ov = Some("gpt-4".to_string());
+		let mut air_c = air_for_create(run_id);
+		air_c.label = Some("first call".to_string());
+		air_c.model_ov = Some("gpt-4".to_string());
 
 		// -- Exec
-		let aixc_id = AixcBmc::create_next(mm, run_id, aixc_c)?;
+		let air_id = AirBmc::create_next(mm, run_id, air_c)?;
 
 		// -- Check
-		let aixc = AixcBmc::get(mm, aixc_id)?;
+		let aixc = AirBmc::get(mm, air_id)?;
 		assert_eq!(aixc.run_id, run_id);
 		assert_eq!(aixc.idx, 1);
 		assert_eq!(aixc.label.as_deref(), Some("first call"));
 		assert_eq!(aixc.model_ov.as_deref(), Some("gpt-4"));
 
 		let run = RunBmc::get(mm, run_id)?;
-		assert_eq!(run.aixc_idx_seq, 1);
+		assert_eq!(run.air_idx_seq, 1);
 
 		Ok(())
 	}
 
 	#[test]
-	fn test_model_aixc_bmc_create_multiple_nexts() -> Result<()> {
+	fn test_model_air_bmc_create_multiple_nexts() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
@@ -269,38 +270,38 @@ mod tests {
 		let run_id = RunBmc::create(mm, run_c)?;
 
 		// -- Exec & Check
-		let id1 = AixcBmc::create_next(mm, run_id, {
-			let mut c = aixc_for_create(run_id);
+		let id1 = AirBmc::create_next(mm, run_id, {
+			let mut c = air_for_create(run_id);
 			c.label = Some("first".to_string());
 			c
 		})?;
-		let id2 = AixcBmc::create_next(mm, run_id, {
-			let mut c = aixc_for_create(run_id);
+		let id2 = AirBmc::create_next(mm, run_id, {
+			let mut c = air_for_create(run_id);
 			c.label = Some("second".to_string());
 			c
 		})?;
-		let id3 = AixcBmc::create_next(mm, run_id, {
-			let mut c = aixc_for_create(run_id);
+		let id3 = AirBmc::create_next(mm, run_id, {
+			let mut c = air_for_create(run_id);
 			c.label = Some("third".to_string());
 			c
 		})?;
 
-		let a1 = AixcBmc::get(mm, id1)?;
-		let a2 = AixcBmc::get(mm, id2)?;
-		let a3 = AixcBmc::get(mm, id3)?;
+		let a1 = AirBmc::get(mm, id1)?;
+		let a2 = AirBmc::get(mm, id2)?;
+		let a3 = AirBmc::get(mm, id3)?;
 
 		assert_eq!(a1.idx, 1);
 		assert_eq!(a2.idx, 2);
 		assert_eq!(a3.idx, 3);
 
 		let run = RunBmc::get(mm, run_id)?;
-		assert_eq!(run.aixc_idx_seq, 3);
+		assert_eq!(run.air_idx_seq, 3);
 
 		Ok(())
 	}
 
 	#[test]
-	fn test_model_aixc_bmc_update() -> Result<()> {
+	fn test_model_air_bmc_update() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
@@ -309,20 +310,20 @@ mod tests {
 		};
 		let run_id = RunBmc::create(mm, run_c)?;
 
-		let aixc_id = AixcBmc::create_next(mm, run_id, aixc_for_create(run_id))?;
+		let air_id = AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
 
-		let update = AixcForUpdate {
+		let update = AirForUpdate {
 			label: Some("updated label".to_string()),
 			model_ov: Some("claude-3".to_string()),
 			..Default::default()
 		};
 
 		// -- Exec
-		let count = AixcBmc::update(mm, aixc_id, update)?;
+		let count = AirBmc::update(mm, air_id, update)?;
 
 		// -- Check
 		assert_eq!(count, 1);
-		let aixc = AixcBmc::get(mm, aixc_id)?;
+		let aixc = AirBmc::get(mm, air_id)?;
 		assert_eq!(aixc.label.as_deref(), Some("updated label"));
 		assert_eq!(aixc.model_ov.as_deref(), Some("claude-3"));
 
@@ -330,7 +331,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_model_aixc_bmc_list() -> Result<()> {
+	fn test_model_air_bmc_list() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
@@ -338,11 +339,11 @@ mod tests {
 			answer: None,
 		};
 		let run_id = RunBmc::create(mm, run_c)?;
-		AixcBmc::create_next(mm, run_id, aixc_for_create(run_id))?;
-		AixcBmc::create_next(mm, run_id, aixc_for_create(run_id))?;
+		AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
+		AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
 
 		// -- Exec
-		let list = AixcBmc::list(mm, None)?;
+		let list = AirBmc::list(mm, None)?;
 
 		// -- Check
 		assert!(list.len() >= 2);
