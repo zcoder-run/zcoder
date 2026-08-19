@@ -14,6 +14,8 @@ zc-common = { workspace = true }
 # -- AI
 genai = { workspace = true }
 udiffx = { workspace = true }
+markex = { workspace = true }
+aiprog = { workspace = true }
 # -- DB
 rusqlite = { workspace = true, features = ["uuid"] }
 modql = { workspace = true }

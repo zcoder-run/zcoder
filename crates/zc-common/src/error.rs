@@ -8,6 +8,12 @@ pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
+	// -- Externals
+	#[from]
+	Io(std::io::Error),
+	#[from]
+	SimpleFs(simple_fs::Error),
+
 	// -- External
 	Tx(String),
 	Rx(String),

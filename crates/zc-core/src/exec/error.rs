@@ -16,6 +16,8 @@ pub enum Error {
 	Tx(String),
 	Rx(String),
 	#[from]
+	Common(zc_common::Error),
+	#[from]
 	Event(zc_common::event_base::EventBaseError),
 
 	// -- External
@@ -27,7 +29,25 @@ pub enum Error {
 
 	#[from]
 	SimpleFs(simple_fs::Error),
+
+	Aiprog(String),
 }
+
+// region:    --- Froms
+
+impl From<aiprog::Error> for Error {
+	fn from(val: aiprog::Error) -> Self {
+		Self::Aiprog(val.to_string())
+	}
+}
+
+impl From<aiprog::EngineError> for Error {
+	fn from(val: aiprog::EngineError) -> Self {
+		Self::Aiprog(val.to_string())
+	}
+}
+
+// endregion: --- Froms
 
 // region:    --- Custom
 

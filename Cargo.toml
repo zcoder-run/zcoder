@@ -61,6 +61,7 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 # -- AI
 genai = { version = "0.7.0-beta" }
 udiffx = { version = "0.1", features = ["prompt"]}
+markex = "0.1"
 aiprog = { git = "https://github.com/zcoder-run/aiprog.git" }
 # -- DB
 rusqlite = { version = "0.40.0", features = ["bundled", "uuid", "serde_json", "serialize"] }
