@@ -127,14 +127,14 @@ impl DbBmc for AirBmc {
 
 /// Basic CRUD
 impl AirBmc {
-	pub fn create(mm: &ModelManager, air_c: AirForCreate) -> Result<Id> {
+	pub async fn create(mm: &ModelManager, air_c: AirForCreate) -> Result<Id> {
 		let run_id = air_c.run_id;
-		Self::create_next(mm, run_id, air_c)
+		Self::create_next(mm, run_id, air_c).await
 	}
 
 	/// Atomically increments the Run's `air_idx_seq`, then creates a new Aixc record
 	/// with that sequence number as `idx`.
-	pub fn create_next(mm: &ModelManager, run_id: Id, air_c: AirForCreate) -> Result<Id> {
+	pub async fn create_next(mm: &ModelManager, run_id: Id, air_c: AirForCreate) -> Result<Id> {
 		let db = mm.db();
 		let rel_ids = RelIds { run_id: Some(run_id) };
 
@@ -174,18 +174,18 @@ impl AirBmc {
 	}
 
 	#[allow(unused)]
-	pub fn update(mm: &ModelManager, id: Id, air_u: AirForUpdate) -> Result<usize> {
+	pub async fn update(mm: &ModelManager, id: Id, air_u: AirForUpdate) -> Result<usize> {
 		let fields = air_u.sqlite_not_none_fields();
 		support::update::<Self>(mm, id, fields)
 	}
 
 	#[allow(unused)]
-	pub fn get(mm: &ModelManager, id: Id) -> Result<Air> {
+	pub async fn get(mm: &ModelManager, id: Id) -> Result<Air> {
 		support::get::<Self, _>(mm, id)
 	}
 
 	#[allow(unused)]
-	pub fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Air>> {
+	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Air>> {
 		support::list::<Self, _>(mm, list_options, None)
 	}
 }
@@ -229,88 +229,91 @@ mod tests {
 
 	// endregion: --- Support
 
-	#[test]
-	fn test_model_air_bmc_create_next() -> Result<()> {
+	#[tokio::test]
+	async fn test_model_air_bmc_create_next() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
 			prompt: Some("test prompt".to_string()),
 			answer: Some("test answer".to_string()),
 		};
-		let run_id = RunBmc::create(mm, run_c)?;
+		let run_id = RunBmc::create(mm, run_c).await?;
 
 		let mut air_c = air_for_create(run_id);
 		air_c.label = Some("first call".to_string());
 		air_c.model_ov = Some("gpt-4".to_string());
 
 		// -- Exec
-		let air_id = AirBmc::create_next(mm, run_id, air_c)?;
+		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 		// -- Check
-		let aixc = AirBmc::get(mm, air_id)?;
+		let aixc = AirBmc::get(mm, air_id).await?;
 		assert_eq!(aixc.run_id, run_id);
 		assert_eq!(aixc.idx, 1);
 		assert_eq!(aixc.label.as_deref(), Some("first call"));
 		assert_eq!(aixc.model_ov.as_deref(), Some("gpt-4"));
 
-		let run = RunBmc::get(mm, run_id)?;
+		let run = RunBmc::get(mm, run_id).await?;
 		assert_eq!(run.air_idx_seq, 1);
 
 		Ok(())
 	}
 
-	#[test]
-	fn test_model_air_bmc_create_multiple_nexts() -> Result<()> {
+	#[tokio::test]
+	async fn test_model_air_bmc_create_multiple_nexts() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
 			prompt: Some("multi".to_string()),
 			answer: None,
 		};
-		let run_id = RunBmc::create(mm, run_c)?;
+		let run_id = RunBmc::create(mm, run_c).await?;
 
 		// -- Exec & Check
 		let id1 = AirBmc::create_next(mm, run_id, {
 			let mut c = air_for_create(run_id);
 			c.label = Some("first".to_string());
 			c
-		})?;
+		})
+		.await?;
 		let id2 = AirBmc::create_next(mm, run_id, {
 			let mut c = air_for_create(run_id);
 			c.label = Some("second".to_string());
 			c
-		})?;
+		})
+		.await?;
 		let id3 = AirBmc::create_next(mm, run_id, {
 			let mut c = air_for_create(run_id);
 			c.label = Some("third".to_string());
 			c
-		})?;
+		})
+		.await?;
 
-		let a1 = AirBmc::get(mm, id1)?;
-		let a2 = AirBmc::get(mm, id2)?;
-		let a3 = AirBmc::get(mm, id3)?;
+		let a1 = AirBmc::get(mm, id1).await?;
+		let a2 = AirBmc::get(mm, id2).await?;
+		let a3 = AirBmc::get(mm, id3).await?;
 
 		assert_eq!(a1.idx, 1);
 		assert_eq!(a2.idx, 2);
 		assert_eq!(a3.idx, 3);
 
-		let run = RunBmc::get(mm, run_id)?;
+		let run = RunBmc::get(mm, run_id).await?;
 		assert_eq!(run.air_idx_seq, 3);
 
 		Ok(())
 	}
 
-	#[test]
-	fn test_model_air_bmc_update() -> Result<()> {
+	#[tokio::test]
+	async fn test_model_air_bmc_update() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
 			prompt: Some("update test".to_string()),
 			answer: None,
 		};
-		let run_id = RunBmc::create(mm, run_c)?;
+		let run_id = RunBmc::create(mm, run_c).await?;
 
-		let air_id = AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
+		let air_id = AirBmc::create_next(mm, run_id, air_for_create(run_id)).await?;
 
 		let update = AirForUpdate {
 			label: Some("updated label".to_string()),
@@ -319,31 +322,31 @@ mod tests {
 		};
 
 		// -- Exec
-		let count = AirBmc::update(mm, air_id, update)?;
+		let count = AirBmc::update(mm, air_id, update).await?;
 
 		// -- Check
 		assert_eq!(count, 1);
-		let aixc = AirBmc::get(mm, air_id)?;
+		let aixc = AirBmc::get(mm, air_id).await?;
 		assert_eq!(aixc.label.as_deref(), Some("updated label"));
 		assert_eq!(aixc.model_ov.as_deref(), Some("claude-3"));
 
 		Ok(())
 	}
 
-	#[test]
-	fn test_model_air_bmc_list() -> Result<()> {
+	#[tokio::test]
+	async fn test_model_air_bmc_list() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
 			prompt: Some("list test".to_string()),
 			answer: None,
 		};
-		let run_id = RunBmc::create(mm, run_c)?;
-		AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
-		AirBmc::create_next(mm, run_id, air_for_create(run_id))?;
+		let run_id = RunBmc::create(mm, run_c).await?;
+		AirBmc::create_next(mm, run_id, air_for_create(run_id)).await?;
+		AirBmc::create_next(mm, run_id, air_for_create(run_id)).await?;
 
 		// -- Exec
-		let list = AirBmc::list(mm, None)?;
+		let list = AirBmc::list(mm, None).await?;
 
 		// -- Check
 		assert!(list.len() >= 2);

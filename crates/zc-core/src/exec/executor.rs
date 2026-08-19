@@ -119,7 +119,7 @@ impl ExecutorInner {
 			prompt: Some(prompt.clone()),
 			answer: None,
 		};
-		let run_id = RunBmc::create(mm, run_c)?;
+		let run_id = RunBmc::create(mm, run_c).await?;
 
 		// -- Prep clones for the async block to avoid moving `self`
 		let status_tx = self.status_tx.clone();
@@ -207,7 +207,8 @@ impl ExecutorInner {
 					answer: Some(answer.clone()),
 					..Default::default()
 				},
-			)?;
+			)
+			.await?;
 
 			// -- send the status event
 			let _ = status_tx.send(ExecEvent::RunEnd(run_id)).await;
@@ -225,7 +226,8 @@ impl ExecutorInner {
 					error: Some(err.to_string()),
 					..Default::default()
 				},
-			)?;
+			)
+			.await?;
 
 			let _ = self.status_tx.send(ExecEvent::RunError(run_id)).await;
 

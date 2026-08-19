@@ -45,23 +45,23 @@ impl DbBmc for RunBmc {
 
 /// Basic CRUD
 impl RunBmc {
-	pub fn create(mm: &ModelManager, run_c: RunForCreate) -> Result<Id> {
+	pub async fn create(mm: &ModelManager, run_c: RunForCreate) -> Result<Id> {
 		let fields = run_c.sqlite_not_none_fields();
 		support::create::<Self>(mm, fields)
 	}
 
 	#[allow(unused)]
-	pub fn update(mm: &ModelManager, id: Id, run_u: RunForUpdate) -> Result<usize> {
+	pub async fn update(mm: &ModelManager, id: Id, run_u: RunForUpdate) -> Result<usize> {
 		let fields = run_u.sqlite_not_none_fields();
 		support::update::<Self>(mm, id, fields)
 	}
 
 	#[allow(unused)]
-	pub fn get(mm: &ModelManager, id: Id) -> Result<Run> {
+	pub async fn get(mm: &ModelManager, id: Id) -> Result<Run> {
 		support::get::<Self, _>(mm, id)
 	}
 
-	pub fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Run>> {
+	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Run>> {
 		support::list::<Self, _>(mm, list_options, None)
 	}
 }
@@ -76,8 +76,8 @@ mod tests {
 	use crate::model::model_manager::get_model_manager;
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
 
-	#[test]
-	fn test_model_run_bmc_create() -> Result<()> {
+	#[tokio::test]
+	async fn test_model_run_bmc_create() -> Result<()> {
 		// -- Fixture
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
@@ -86,10 +86,10 @@ mod tests {
 		};
 
 		// -- Exec
-		let id = RunBmc::create(mm, run_c)?;
+		let id = RunBmc::create(mm, run_c).await?;
 
 		// -- Check
-		let run = RunBmc::get(mm, id)?;
+		let run = RunBmc::get(mm, id).await?;
 		assert_eq!(run.prompt.as_deref(), Some("Why is shy red?"));
 
 		Ok(())

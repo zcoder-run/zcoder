@@ -29,7 +29,7 @@ pub async fn handle_tui_event(
 		}
 
 		TuiEvent::Model(model_event) => {
-			handle_model_event(state, model_event)?;
+			handle_model_event(state, model_event).await?;
 		}
 
 		TuiEvent::Tick | TuiEvent::DoRedraw => {}
@@ -94,14 +94,14 @@ pub fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 	}
 }
 
-pub fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -> Result<()> {
+pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -> Result<()> {
 	// do nothing for now
 	// tracing::debug!("TUI GOT MODEL EVENT:\n{model_event:#?}")
 	match model_event.entity {
 		zc_core::model::EntityType::Run => {
 			let mm = get_model_manager()?;
 			if let Some(run_id) = model_event.id
-				&& let Ok(run) = RunBmc::get(mm, run_id)
+				&& let Ok(run) = RunBmc::get(mm, run_id).await
 			{
 				state.set_last_answer(run.answer);
 			} else {
