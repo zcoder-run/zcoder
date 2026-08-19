@@ -47,22 +47,22 @@ impl DbBmc for RunBmc {
 impl RunBmc {
 	pub async fn create(mm: &ModelManager, run_c: RunForCreate) -> Result<Id> {
 		let fields = run_c.sqlite_not_none_fields();
-		support::create::<Self>(mm, fields)
+		support::create::<Self>(mm, fields).await
 	}
 
 	#[allow(unused)]
 	pub async fn update(mm: &ModelManager, id: Id, run_u: RunForUpdate) -> Result<usize> {
 		let fields = run_u.sqlite_not_none_fields();
-		support::update::<Self>(mm, id, fields)
+		support::update::<Self>(mm, id, fields).await
 	}
 
 	#[allow(unused)]
 	pub async fn get(mm: &ModelManager, id: Id) -> Result<Run> {
-		support::get::<Self, _>(mm, id)
+		support::get::<Self, _>(mm, id).await
 	}
 
 	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Run>> {
-		support::list::<Self, _>(mm, list_options, None)
+		support::list::<Self, _>(mm, list_options, None).await
 	}
 }
 

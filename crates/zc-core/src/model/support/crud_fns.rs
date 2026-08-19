@@ -6,17 +6,18 @@ use crate::model::{EntityAction, Id, ModelEvent, ModelManager, RelIds, Result, g
 use modql::SqliteFromRow;
 use modql::field::{HasSqliteFields, SqliteFields};
 use modql::filter::ListOptions;
+use rusqlite::types::{ToSql, ToSqlOutput, Value, ValueRef};
 
 pub const DEFAULT_LIST_LIMIT: i64 = 12000;
 
-pub fn create<MC>(mm: &ModelManager, fields: SqliteFields) -> Result<Id>
+pub async fn create<MC>(mm: &ModelManager, fields: SqliteFields) -> Result<Id>
 where
 	MC: DbBmc,
 {
-	create_inner::<MC>(mm, fields, true, RelIds::default())
+	create_inner::<MC>(mm, fields, true, RelIds::default()).await
 }
 
-pub fn update_with_rel_ids<MC>(mm: &ModelManager, id: Id, mut fields: SqliteFields, rel_ids: RelIds) -> Result<usize>
+pub async fn update_with_rel_ids<MC>(mm: &ModelManager, id: Id, mut fields: SqliteFields, rel_ids: RelIds) -> Result<usize>
 where
 	MC: DbBmc,
 {
@@ -26,11 +27,11 @@ where
 	let sql = format!("UPDATE {} SET {} WHERE id = ?", MC::table_ref(), fields.sql_setters(),);
 
 	// -- Execute the command
-	let mut values = fields.values_as_dyn_to_sql_vec();
-	values.push(&id);
+	let mut values = fields_to_values(&fields)?;
+	values.push(Value::from(id));
 	let db = mm.db();
 
-	let count = db.exec(&sql, &*values)?;
+	let count = db.exec(&sql, rusqlite::params_from_iter(&values)).await?;
 
 	// -- Publish Model Event
 	get_model_bus().publish(ModelEvent::new(
@@ -43,15 +44,15 @@ where
 	Ok(count)
 }
 
-pub fn update<MC>(mm: &ModelManager, id: Id, fields: SqliteFields) -> Result<usize>
+pub async fn update<MC>(mm: &ModelManager, id: Id, fields: SqliteFields) -> Result<usize>
 where
 	MC: DbBmc,
 {
-	update_with_rel_ids::<MC>(mm, id, fields, RelIds::default())
+	update_with_rel_ids::<MC>(mm, id, fields, RelIds::default()).await
 }
 
 #[allow(unused)]
-pub fn create_where_not_exists<MC>(
+pub async fn create_where_not_exists<MC>(
 	mm: &ModelManager,
 	mut fields: SqliteFields,
 	not_exists_fields: SqliteFields,
@@ -87,10 +88,10 @@ RETURNING id",
 
 	// -- Execute the command
 	let fields = fields.extended(not_exists_fields);
-	let values = fields.values_as_dyn_to_sql_vec();
+	let values = fields_to_values(&fields)?;
 	let db = mm.db();
 
-	let id: Option<Id> = db.exec_returning_as_optional(&sql, &*values)?;
+	let id: Option<Id> = db.exec_returning_as_optional(&sql, rusqlite::params_from_iter(&values)).await?;
 
 	if let Some(id) = id {
 		get_model_bus().publish(ModelEvent::new(
@@ -105,14 +106,14 @@ RETURNING id",
 }
 
 #[allow(unused)]
-pub fn create_with_rel_ids<MC>(mm: &ModelManager, fields: SqliteFields, rel_ids: RelIds) -> Result<Id>
+pub async fn create_with_rel_ids<MC>(mm: &ModelManager, fields: SqliteFields, rel_ids: RelIds) -> Result<Id>
 where
 	MC: DbBmc,
 {
-	create_inner::<MC>(mm, fields, true, rel_ids)
+	create_inner::<MC>(mm, fields, true, rel_ids).await
 }
 
-fn create_inner<MC>(mm: &ModelManager, mut fields: SqliteFields, generate_uuid: bool, rel_ids: RelIds) -> Result<Id>
+async fn create_inner<MC>(mm: &ModelManager, mut fields: SqliteFields, generate_uuid: bool, rel_ids: RelIds) -> Result<Id>
 where
 	MC: DbBmc,
 {
@@ -130,10 +131,10 @@ where
 	);
 
 	// -- Execute the command
-	let values = fields.values_as_dyn_to_sql_vec();
+	let values = fields_to_values(&fields)?;
 	let db = mm.db();
 
-	let id: Id = db.exec_returning_as(&sql, &*values)?;
+	let id: Id = db.exec_returning_as(&sql, rusqlite::params_from_iter(&values)).await?;
 
 	// -- Publish Model Event
 	get_model_bus().publish(ModelEvent::new(
@@ -146,7 +147,7 @@ where
 	Ok(id)
 }
 
-pub fn get<MC, E>(mm: &ModelManager, id: Id) -> Result<E>
+pub async fn get<MC, E>(mm: &ModelManager, id: Id) -> Result<E>
 where
 	MC: DbBmc,
 	E: SqliteFromRow + Unpin + Send,
@@ -163,14 +164,15 @@ where
 	// -- Exec query
 	let db = mm.db();
 	let entity: E = db
-		.fetch_first(&sql, [(&id)])?
+		.fetch_first(&sql, [id])
+		.await?
 		.ok_or_else(|| format!("Cannot get entity '{}'", MC::TABLE))?;
 
 	Ok(entity)
 }
 
 #[allow(unused)]
-pub fn batch_create_with_rel_ids<MC>(
+pub async fn batch_create_with_rel_ids<MC>(
 	mm: &ModelManager,
 	mut items: Vec<SqliteFields>,
 	rel_ids: RelIds,
@@ -187,22 +189,25 @@ where
 		prep_fields_for_create::<MC>(fields);
 	}
 
-	let res = mm.db().exec_in_tx(|tx_db| {
-		let mut ids: Vec<Id> = Vec::with_capacity(items.len());
-		for fields in items {
-			let sql = format!(
-				"INSERT INTO {} ({}) VALUES ({}) RETURNING id",
-				MC::table_ref(),
-				fields.sql_columns(),
-				fields.sql_placeholders()
-			);
+	let res = mm
+		.db()
+		.exec_in_tx(|tx_db| {
+			let mut ids: Vec<Id> = Vec::with_capacity(items.len());
+			for fields in items {
+				let sql = format!(
+					"INSERT INTO {} ({}) VALUES ({}) RETURNING id",
+					MC::table_ref(),
+					fields.sql_columns(),
+					fields.sql_placeholders()
+				);
 
-			let values = fields.values_as_dyn_to_sql_vec();
-			let id: Id = tx_db.exec_returning_as(&sql, &*values)?;
-			ids.push(id);
-		}
-		Ok(ids)
-	})?;
+				let values = fields_to_values(&fields)?;
+				let id: Id = tx_db.exec_returning_as(&sql, rusqlite::params_from_iter(&values))?;
+				ids.push(id);
+			}
+			Ok(ids)
+		})
+		.await?;
 
 	// -- Publish Model Event
 	get_model_bus().publish(ModelEvent::new(MC::ENTITY_TYPE, EntityAction::Created, None, rel_ids));
@@ -220,7 +225,7 @@ where
 }
 
 #[allow(unused)]
-pub fn first<MC, E>(
+pub async fn first<MC, E>(
 	mm: &ModelManager,
 	list_options: Option<ListOptions>,
 	filter_fields: Option<SqliteFields>,
@@ -235,11 +240,11 @@ where
 	} else {
 		ListOptions::from_limit(1)
 	};
-	let entities = list::<MC, E>(mm, Some(list_options), filter_fields)?;
+	let entities = list::<MC, E>(mm, Some(list_options), filter_fields).await?;
 	Ok(entities.into_iter().next())
 }
 
-pub fn list<MC, E>(
+pub async fn list<MC, E>(
 	mm: &ModelManager,
 	list_options: Option<ListOptions>,
 	filter_fields: Option<SqliteFields>,
@@ -258,7 +263,7 @@ where
 	// TODO: add the offset
 
 	// -- Select
-	let (sql, params) = if let Some(filter_fields) = filter_fields.as_ref() {
+	let (sql, values) = if let Some(filter_fields) = filter_fields.as_ref() {
 		// NOTE: For now only support =
 		let where_clause = filter_fields
 			.fields()
@@ -274,7 +279,7 @@ where
 			where_clause,
 		);
 
-		(sql, filter_fields.values_as_dyn_to_sql_vec())
+		(sql, fields_to_values(filter_fields)?)
 	} else {
 		let sql = format!(
 			"SELECT {} FROM {} ORDER BY {order_by} LIMIT {limit} ",
@@ -286,7 +291,40 @@ where
 
 	// -- Exec query
 	let db = mm.db();
-	let entities: Vec<E> = db.fetch_all(&sql, &*params)?;
+	let entities: Vec<E> = db.fetch_all(&sql, rusqlite::params_from_iter(&values)).await?;
 
 	Ok(entities)
 }
+
+// region:    --- Support
+
+fn to_sqlite_value(val: &dyn ToSql) -> Result<Value> {
+	let output = val.to_sql()?;
+	let value = match output {
+		ToSqlOutput::Borrowed(vr) => match vr {
+			ValueRef::Null => Value::Null,
+			ValueRef::Integer(v) => Value::Integer(v),
+			ValueRef::Real(v) => Value::Real(v),
+			ValueRef::Text(v) => {
+				let s = std::str::from_utf8(v).map_err(|e| format!("Invalid utf-8 string: {e}"))?;
+				Value::Text(s.to_string())
+			}
+			ValueRef::Blob(v) => Value::Blob(v.to_vec()),
+		},
+		ToSqlOutput::Owned(v) => v,
+		#[allow(unreachable_patterns)]
+		_ => return Err("Unsupported ToSqlOutput type".into()),
+	};
+	Ok(value)
+}
+
+fn fields_to_values(fields: &SqliteFields) -> Result<Vec<Value>> {
+	let dyn_values = fields.values_as_dyn_to_sql_vec();
+	let mut values = Vec::with_capacity(dyn_values.len());
+	for val in dyn_values {
+		values.push(to_sqlite_value(val)?);
+	}
+	Ok(values)
+}
+
+// endregion: --- Support

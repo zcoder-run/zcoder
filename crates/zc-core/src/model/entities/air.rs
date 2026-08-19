@@ -138,29 +138,31 @@ impl AirBmc {
 		let db = mm.db();
 		let rel_ids = RelIds { run_id: Some(run_id) };
 
-		let id = db.exec_in_tx(|tx_db| {
-			// Atomically increment air_idx_seq on the Run record
-			let sql = "UPDATE run SET air_idx_seq = air_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING air_idx_seq";
-			let now = zc_common::time::now_micro();
-			let new_idx: i64 = tx_db.exec_returning_as(sql, (run_id, now))?;
+		let id = db
+			.exec_in_tx(|tx_db| {
+				// Atomically increment air_idx_seq on the Run record
+				let sql = "UPDATE run SET air_idx_seq = air_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING air_idx_seq";
+				let now = zc_common::time::now_micro();
+				let new_idx: i64 = tx_db.exec_returning_as(sql, (run_id, now))?;
 
-			// Build fields for the Aixc record (includes run_id from air_c)
-			let mut fields = air_c.sqlite_not_none_fields();
-			fields.push(SqliteField::new("idx", new_idx));
-			prep_fields_for_create::<Self>(&mut fields);
+				// Build fields for the Aixc record (includes run_id from air_c)
+				let mut fields = air_c.sqlite_not_none_fields();
+				fields.push(SqliteField::new("idx", new_idx));
+				prep_fields_for_create::<Self>(&mut fields);
 
-			let sql = format!(
-				"INSERT INTO {} ({}) VALUES ({}) RETURNING id",
-				Self::TABLE,
-				fields.sql_columns(),
-				fields.sql_placeholders()
-			);
+				let sql = format!(
+					"INSERT INTO {} ({}) VALUES ({}) RETURNING id",
+					Self::TABLE,
+					fields.sql_columns(),
+					fields.sql_placeholders()
+				);
 
-			let values = fields.values_as_dyn_to_sql_vec();
-			let id: Id = tx_db.exec_returning_as(&sql, &*values)?;
+				let values = fields.values_as_dyn_to_sql_vec();
+				let id: Id = tx_db.exec_returning_as(&sql, &*values)?;
 
-			Ok(id)
-		})?;
+				Ok(id)
+			})
+			.await?;
 
 		// Publish Model Event
 		get_model_bus().publish(ModelEvent::new(
@@ -176,17 +178,17 @@ impl AirBmc {
 	#[allow(unused)]
 	pub async fn update(mm: &ModelManager, id: Id, air_u: AirForUpdate) -> Result<usize> {
 		let fields = air_u.sqlite_not_none_fields();
-		support::update::<Self>(mm, id, fields)
+		support::update::<Self>(mm, id, fields).await
 	}
 
 	#[allow(unused)]
 	pub async fn get(mm: &ModelManager, id: Id) -> Result<Air> {
-		support::get::<Self, _>(mm, id)
+		support::get::<Self, _>(mm, id).await
 	}
 
 	#[allow(unused)]
 	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Air>> {
-		support::list::<Self, _>(mm, list_options, None)
+		support::list::<Self, _>(mm, list_options, None).await
 	}
 }
 

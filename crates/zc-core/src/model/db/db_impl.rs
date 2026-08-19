@@ -19,18 +19,19 @@ impl Db {
 	pub fn new() -> Result<Self> {
 		// let con = Connection::open(".mock-db.sqlite")?;
 		let con = Connection::open_in_memory()?;
+		recreate_db(&con)?;
 		let con = Arc::new(Mutex::new(con));
 
 		Ok(Self { con })
 	}
 
-	pub fn recreate(&self) -> Result<()> {
+	pub async fn recreate(&self) -> Result<()> {
 		let con = self.con.lock()?;
 		recreate_db(&con)?;
 		Ok(())
 	}
 
-	pub fn exec_in_tx<R, F>(&self, f: F) -> Result<R>
+	pub async fn exec_in_tx<R, F>(&self, f: F) -> Result<R>
 	where
 		F: FnOnce(&DbTx) -> Result<R>,
 	{
@@ -55,7 +56,7 @@ impl Db {
 impl Db {
 	/// Execute a parameterized sql with its params, and return the number of rows affected
 	/// returns: number of rows affected
-	pub fn exec(&self, sql: &str, params: impl Params) -> Result<usize> {
+	pub async fn exec(&self, sql: &str, params: impl Params) -> Result<usize> {
 		let conn_g = self.con.lock()?;
 		_exec(&conn_g, sql, params)
 	}
@@ -63,7 +64,7 @@ impl Db {
 	/// Perform a sql exec and return the first row and first value as num
 	/// NOTE: This is useful for query with RETURNING ID
 	/// e.g., `db.exec_as_num("select count(*) from person", [] )`
-	pub fn exec_returning_num(&self, sql: &str, params: impl Params) -> Result<i64> {
+	pub async fn exec_returning_num(&self, sql: &str, params: impl Params) -> Result<i64> {
 		let conn_g = self.con.lock()?;
 		_exec_returning_num(&conn_g, sql, params)
 	}
@@ -71,19 +72,22 @@ impl Db {
 	/// Perform a sql exec and returns the first value of the first row and
 	/// cast it to the type T
 	/// ```
+	/// # async fn doc() -> Result<(), Box<dyn std::error::Error>> {
 	/// # use zc_core::Db;
-	/// let db = Db::new().unwrap();
-	/// db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)", []).unwrap();
-	/// db.exec("INSERT INTO t (id, name) VALUES (42, 'foo')", []).unwrap();
-	/// let id: i64 = db.exec_returning_as("SELECT id FROM t WHERE name = ?1", ["foo"]).unwrap();
+	/// let db = Db::new()?;
+	/// db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)", []).await?;
+	/// db.exec("INSERT INTO t (id, name) VALUES (42, 'foo')", []).await?;
+	/// let id: i64 = db.exec_returning_as("SELECT id FROM t WHERE name = ?1", ["foo"]).await?;
 	/// assert_eq!(id, 42);
+	/// # Ok(())
+	/// # }
 	/// ```
-	pub fn exec_returning_as<T: FromSql>(&self, sql: &str, params: impl Params) -> Result<T> {
+	pub async fn exec_returning_as<T: FromSql>(&self, sql: &str, params: impl Params) -> Result<T> {
 		let conn_g = self.con.lock()?;
 		_exec_returning_as(&conn_g, sql, params)
 	}
 
-	pub fn exec_returning_as_optional<T: FromSql>(&self, sql: &str, params: impl Params) -> Result<Option<T>> {
+	pub async fn exec_returning_as_optional<T: FromSql>(&self, sql: &str, params: impl Params) -> Result<Option<T>> {
 		let conn_g = self.con.lock()?;
 		_exec_returning_as_optional(&conn_g, sql, params)
 	}
@@ -91,7 +95,7 @@ impl Db {
 	/// Fetch the first row and cast to to Option<T>
 	/// NOTE: This assume the sql would have the LIMIT 1 added
 	/// TODO: Might want to add the LIMIT 1 if not already (not sure)
-	pub fn fetch_first<P, T>(&self, sql: &str, params: P) -> Result<Option<T>>
+	pub async fn fetch_first<P, T>(&self, sql: &str, params: P) -> Result<Option<T>>
 	where
 		P: Params,
 		T: SqliteFromRow,
@@ -100,7 +104,7 @@ impl Db {
 		_fetch_first::<P, T>(&conn_g, sql, params)
 	}
 
-	pub fn fetch_all<P, T>(&self, sql: &str, params: P) -> Result<Vec<T>>
+	pub async fn fetch_all<P, T>(&self, sql: &str, params: P) -> Result<Vec<T>>
 	where
 		P: Params,
 		T: SqliteFromRow,

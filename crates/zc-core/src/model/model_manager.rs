@@ -20,21 +20,21 @@ impl ModelManager {
 	/// NOTE: This is to make sure the db does not become too big in memory
 	///      For now, very agressive, just delete everything.
 	/// Should be called at the start of each run
-	pub fn trim(&self) -> Result<usize> {
+	pub async fn trim(&self) -> Result<usize> {
 		let db = self.db();
-		let run_count = db.exec("DELETE FROM run", [])?;
+		let run_count = db.exec("DELETE FROM run", []).await?;
 
 		Ok(run_count)
 	}
 
-	pub fn db_size(&self) -> Result<i64> {
+	pub async fn db_size(&self) -> Result<i64> {
 		let db = self.db();
 		let sql = r#"
 SELECT page_count * page_size as size_bytes
 FROM pragma_page_count(), pragma_page_size();
 		"#;
 
-		let res = db.exec_returning_num(sql, ())?;
+		let res = db.exec_returning_num(sql, ()).await?;
 		Ok(res)
 	}
 }
@@ -42,7 +42,6 @@ FROM pragma_page_count(), pragma_page_size();
 impl ModelManager {
 	fn new() -> Result<Self> {
 		let db = Db::new()?;
-		db.recreate()?;
 		Ok(Self { db })
 	}
 }
