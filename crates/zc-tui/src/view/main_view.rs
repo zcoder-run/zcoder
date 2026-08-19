@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::Block;
 
-pub fn render(f: &mut Frame, state: &TuiState) {
+pub fn render(f: &mut Frame, state: &mut TuiState) {
 	let chunks = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([

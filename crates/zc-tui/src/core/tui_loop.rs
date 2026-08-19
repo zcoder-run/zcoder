@@ -16,7 +16,7 @@ pub async fn run_ui_loop(
 	let mut state = TuiState::new(initial_prompt);
 
 	loop {
-		terminal.draw(|f| view::render(f, &state))?;
+		terminal.draw(|f| view::render(f, &mut state))?;
 
 		let app_event = tui_rx.recv().await?;
 

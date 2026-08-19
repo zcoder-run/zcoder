@@ -2,12 +2,16 @@ use super::event::TuiEvent;
 use super::{term_reader, tui_loop};
 use crate::Result;
 use crate::core::model_loop::run_model_loop;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::execute;
+use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
 use zc_core::exec::{ExecCmdTx, ExecEventRx};
 
 pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
 	let mut terminal = ratatui::init();
+	execute!(stdout(), EnableMouseCapture)?;
 	terminal.clear()?;
 
 	// -- Create AppEvent channels
@@ -35,6 +39,7 @@ pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial
 
 	// -- Restore Terminal
 	ratatui::restore();
+	let _ = execute!(stdout(), DisableMouseCapture);
 
 	res
 }

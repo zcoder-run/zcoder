@@ -1,7 +1,9 @@
 use crate::Result;
 use crate::core::TuiState;
 use crate::core::event::{AppActionEvent, TuiEvent, TuiTx};
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crate::core::types::ScrollIden;
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+use ratatui::layout::Position;
 use tracing::debug;
 use zc_core::exec::{ExecCmd, ExecCmdTx, ExecEvent};
 use zc_core::model::{ModelEvent, RunBmc, get_model_manager};
@@ -38,30 +40,57 @@ pub async fn handle_tui_event(
 }
 
 pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event: Event) {
-	if let Event::Key(key) = term_event
-		&& key.kind == KeyEventKind::Press
-	{
-		match key.code {
-			KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-				let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
-			}
-			KeyCode::Enter => {
-				let trimmed_input = state.input().trim().to_string();
-				if trimmed_input == "/q" {
+	match term_event {
+		Event::Key(key) if key.kind == KeyEventKind::Press => {
+			match key.code {
+				KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
-				} else if !trimmed_input.is_empty() && !state.is_waiting() {
-					let prompt = state.input().to_string();
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(prompt))).await;
+				}
+				KeyCode::Enter => {
+					let trimmed_input = state.input().trim().to_string();
+					if trimmed_input == "/q" {
+						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
+					} else if !trimmed_input.is_empty() && !state.is_waiting() {
+						let prompt = state.input().to_string();
+						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(prompt))).await;
+					}
+				}
+				KeyCode::PageUp => {
+					state.dec_scroll(ScrollIden::AnswerContent, 5);
+				}
+				KeyCode::PageDown => {
+					state.inc_scroll(ScrollIden::AnswerContent, 5);
+				}
+				KeyCode::Home => {
+					state.set_scroll(ScrollIden::AnswerContent, 0);
+				}
+				KeyCode::End => {
+					state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
+				}
+				KeyCode::Backspace => {
+					state.pop_input();
+				}
+				KeyCode::Char(c) => {
+					state.push_input(c);
+				}
+				_ => {}
+			}
+		}
+		Event::Mouse(mouse_event) => {
+			let pos = Position::new(mouse_event.column, mouse_event.row);
+			if let Some(iden) = state.scroll_zones().find_zone_for_pos(pos) {
+				match mouse_event.kind {
+					MouseEventKind::ScrollUp => {
+						state.dec_scroll(iden, 2);
+					}
+					MouseEventKind::ScrollDown => {
+						state.inc_scroll(iden, 2);
+					}
+					_ => {}
 				}
 			}
-			KeyCode::Backspace => {
-				state.pop_input();
-			}
-			KeyCode::Char(c) => {
-				state.push_input(c);
-			}
-			_ => {}
 		}
+		_ => {}
 	}
 }
 
