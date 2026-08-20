@@ -178,7 +178,7 @@ impl ExecutorInner {
 						let outcome = rt
 							.block_on(script_engine_clone.exec(&lua_script, running_context))
 							.map_err(|e| Error::Aiprog(e.to_string()))?;
-						Ok(outcome.result.map(|val| format!("{val:#?}")).map_err(|err| err.to_string()))
+						Ok(outcome.result.map(format_lua_outcome_value).map_err(|err| err.to_string()))
 					})
 					.await
 					.map_err(|e| Error::custom(format!("Lua execution join error: {e}")))??;
@@ -270,6 +270,13 @@ fn extract_aiprog_scripts(content: &str) -> (Vec<String>, String) {
 	(scripts, text_parts.join("").trim().to_string())
 }
 
+fn format_lua_outcome_value(val: serde_json::Value) -> String {
+	match val {
+		serde_json::Value::String(s) => s,
+		other => zc_common::yaml::json_to_yaml_string(&other).unwrap_or_else(|_| other.to_string()),
+	}
+}
+
 // endregion: --- Support
 
 // region:    --- Tests
@@ -305,6 +312,36 @@ mod tests {
 		// -- Check
 		assert!(scripts.is_empty());
 		assert_eq!(text, "No aiprog tag here.");
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_format_lua_outcome_value_string() -> Result<()> {
+		// -- Setup & Fixtures
+		let val = serde_json::Value::String("hello world\nsecond line".to_string());
+
+		// -- Exec
+		let formatted = format_lua_outcome_value(val);
+
+		// -- Check
+		assert_eq!(formatted, "hello world\nsecond line");
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_format_lua_outcome_value_object() -> Result<()> {
+		// -- Setup & Fixtures
+		let val = serde_json::json!({
+			"status": "ok",
+			"code": 200
+		});
+
+		// -- Exec
+		let formatted = format_lua_outcome_value(val);
+
+		// -- Check
+		assert!(formatted.contains("status: ok"));
+		assert!(formatted.contains("code: 200"));
 		Ok(())
 	}
 }

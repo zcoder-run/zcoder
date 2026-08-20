@@ -24,6 +24,7 @@ simple-fs = { workspace = true }
 # -- Async
 tokio = { workspace = true }
 # -- Others
+serde_json = { workspace = true }
 macro_rules_attribute = { workspace = true }
 uuid = { workspace = true }
 derive_more = { workspace = true }

@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 # -- Async & Events
 crossfire = { workspace = true }
+# -- Content Formats
+serde = { workspace = true }
+serde_json = { workspace = true }
+yaml_serde = { workspace = true }
 # -- FS
 simple-fs = { workspace = true }
 # -- Time

@@ -12,7 +12,11 @@ pub enum Error {
 	#[from]
 	Io(std::io::Error),
 	#[from]
+	Json(serde_json::Error),
+	#[from]
 	SimpleFs(simple_fs::Error),
+	#[from]
+	YamlSerde(yaml_serde::Error),
 
 	// -- External
 	Tx(String),
