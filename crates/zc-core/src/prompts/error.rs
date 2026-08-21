@@ -1,4 +1,3 @@
-use crate::{model, prompts};
 use derive_more::{Display, From};
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -9,31 +8,7 @@ pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
-	// -- Modules
-	#[from]
-	Model(model::Error),
-
-	#[from]
-	Prompts(prompts::Error),
-
-	// -- zc_common
-	Tx(String),
-	Rx(String),
-	#[from]
-	Common(zc_common::Error),
-	#[from]
-	Event(zc_common::event_base::EventBaseError),
-
 	// -- External
-	#[from]
-	Genai(genai::Error),
-
-	#[from]
-	Udiffx(udiffx::Error),
-
-	#[from]
-	SimpleFs(simple_fs::Error),
-
 	Aiprog(String),
 }
 

@@ -1,5 +1,6 @@
 use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result};
 use crate::model::{ModelManager, RunBmc, RunForCreate, RunForUpdate};
+use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
 use zc_common::event_base::new_mpsc_bounded;
 
@@ -69,13 +70,10 @@ impl Executor {
 
 		let aip_registry = aiprog::AipRegistry::from_aip_modules()?;
 		let script_engine = aiprog::ScriptEngine::builder().with_registry(aip_registry).build()?;
-		let aiprog_doc = script_engine.generate_doc()?;
 
-		let base_chat_req = ChatRequest::from_system(format!(
-			"You are a senior developer. User will give you instructions and context.\n\n{}\n\nWhen you need to execute Lua scripts, enclose them within `<AIPROG>...</AIPROG>` tags. Scripts have access to the AIPROG APIs and should return values directly (e.g., return string or table) to communicate results back.\n\n<AIPROG_LUA_APIS>\n{}\n</AIPROG_LUA_APIS>",
-			udiffx::prompt_file_changes(),
-			aiprog_doc
-		));
+		// -- Build the base ai request
+		let system_prompt = prompts::maestro_entry_system(&script_engine)?;
+		let base_chat_req = ChatRequest::from_system(system_prompt);
 
 		Ok((
 			Self {
