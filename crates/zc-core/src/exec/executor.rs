@@ -186,13 +186,13 @@ impl ExecutorInner {
 						if !answer.trim().is_empty() {
 							answer.push_str("\n\n");
 						}
-						answer.push_str(&format!("### Lua Execution Result\n\n```\n{val_str}\n```"));
+						answer.push_str(&val_str);
 					}
 					Err(err_str) => {
 						if !answer.trim().is_empty() {
 							answer.push_str("\n\n");
 						}
-						answer.push_str(&format!("### Lua Execution Error\n\n```\n{err_str}\n```"));
+						answer.push_str(&err_str);
 					}
 				}
 			}
@@ -239,11 +239,14 @@ impl ExecutorInner {
 
 // region:    --- Support
 
-fn create_dir_context(base_dir: &str) -> core::result::Result<aiprog::DirContext, aiprog::DirPolicyError> {
+fn create_dir_context(base_dir: &str) -> Result<aiprog::DirContext> {
 	let _ = simple_fs::ensure_dir(base_dir);
-	let read_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
-	let write_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
-	Ok(aiprog::DirContext::new(read_policy, write_policy))
+	(|| -> core::result::Result<_, _> {
+		let read_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
+		let write_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
+		aiprog::DirContext::new("./", read_policy, write_policy)
+	})()
+	.map_err(super::Error::custom_from_err)
 }
 
 fn extract_aiprog_scripts(content: &str) -> (Vec<String>, String) {
