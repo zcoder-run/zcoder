@@ -1,0 +1,19 @@
+[package]
+name = "zc-asset"
+version = "0.0.2-WIP"
+edition = "2024"
+
+[lib]
+doctest = false
+
+[dependencies]
+# -- Archive
+zip = { workspace = true }
+# -- Others
+derive_more = { workspace = true }
+
+[build-dependencies]
+# -- Archive
+zip = { workspace = true }
+# -- FS
+walkdir = { workspace = true }

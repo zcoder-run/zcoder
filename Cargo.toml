@@ -21,6 +21,7 @@ path = "src/main.rs"
 
 [workspace]
 members = [
+    "crates/zc-asset",
     "crates/zc-core",
     "crates/zc-common",
     "crates/zc-tui",
@@ -43,6 +44,7 @@ clap = { workspace = true }
 derive_more = { workspace = true }
 
 [workspace.dependencies]
+zc-asset = { path = "crates/zc-asset" }
 zc-core = { path = "crates/zc-core" }
 zc-common = { path = "crates/zc-common" }
 zc-tui = { path = "crates/zc-tui" }
@@ -68,6 +70,9 @@ rusqlite = { version = "0.40.0", features = ["bundled", "uuid", "serde_json", "s
 modql = { version = "0.5.0", features = ["with-rusqlite"]}
 # -- FS
 simple-fs = { version = "0.12"}
+walkdir = "2"
+# -- Archive
+zip = { version = "2", default-features = false, features = ["zstd"] }
 # -- Time
 time = { version = "0.3.44", features = ["formatting", "local-offset"]}
 time-tz = {version = "2.0.0", features = ["system"]}
