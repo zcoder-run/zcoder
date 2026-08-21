@@ -44,18 +44,21 @@ clap = { workspace = true }
 derive_more = { workspace = true }
 
 [workspace.dependencies]
+# -- Sub Crates
 zc-asset = { path = "crates/zc-asset" }
 zc-core = { path = "crates/zc-core" }
 zc-common = { path = "crates/zc-common" }
 zc-tui = { path = "crates/zc-tui" }
-# -- Tracing
-tracing = "0.1"
-tracing-subscriber = {version = "0.3", features = ["env-filter"]}
-tracing-appender = "0.2"
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"
 crossfire = "3.1.12"
+# -- Serde & Content Formats
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+yaml_serde = "0.10.7"
+handlebars = "6"
+markex = "0.1"
 # -- CLI
 clap = { version = "4", features = ["derive"] }
 ratatui = "0.30"
@@ -63,7 +66,6 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 # -- AI
 genai = { version = "0.7.0-beta" }
 udiffx = { version = "0.1", features = ["prompt"]}
-markex = "0.1"
 aiprog = { git = "https://github.com/zcoder-run/aiprog.git" }
 # -- DB
 rusqlite = { version = "0.40.0", features = ["bundled", "uuid", "serde_json", "serialize"] }
@@ -76,10 +78,10 @@ zip = { version = "2", default-features = false, features = ["zstd"] }
 # -- Time
 time = { version = "0.3.44", features = ["formatting", "local-offset"]}
 time-tz = {version = "2.0.0", features = ["system"]}
-# -- Serde & Content Formats
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-yaml_serde = "0.10.7"
+# -- Tracing
+tracing = "0.1"
+tracing-subscriber = {version = "0.3", features = ["env-filter"]}
+tracing-appender = "0.2"
 # -- Others
 macro_rules_attribute = "0.2.2"
 uuid = {version = "1.18", features = ["v4", "v7", "fast-rng"]}
