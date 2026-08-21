@@ -19,6 +19,12 @@ unsafe_code = "forbid"
 name = "zc"
 path = "src/main.rs"
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [workspace]
 members = [
     "crates/zc-asset",
@@ -27,6 +33,7 @@ members = [
     "crates/zc-tui",
 ]
 resolver = "3"
+
 
 [dependencies]
 # -- Sub Crates
