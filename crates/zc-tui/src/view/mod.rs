@@ -6,6 +6,7 @@ mod main_view;
 mod prompt_view;
 mod status_view;
 pub mod style;
+pub mod tblock;
 
 pub use answer_view::*;
 pub use footer_view::*;

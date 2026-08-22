@@ -48,3 +48,22 @@ pub const STL_FOOTER: Style = Style::new().fg(TXT_DIM).bg(BKG_APP);
 
 pub const STL_SYS_STAT_LBL: Style = Style::new().fg(TXT_MUTED).bg(BKG_PANEL);
 pub const STL_SYS_STAT_VAL: Style = Style::new().fg(TXT_SECOND).bg(BKG_APP);
+
+// -- TBlock Indicator Bar Colors
+pub const CLR_BAR_PROMPT: Color = Color::Indexed(33);
+pub const CLR_BAR_ANSWER: Color = Color::Indexed(46);
+pub const CLR_BAR_ERR: Color = Color::Indexed(196);
+pub const CLR_BAR_RUNNING: Color = Color::Indexed(226);
+
+// -- TBlock Indicator Bar Styles
+pub const STL_BAR_PROMPT: Style = Style::new().fg(CLR_BAR_PROMPT).bg(BKG_PANEL);
+pub const STL_BAR_ANSWER: Style = Style::new().fg(CLR_BAR_ANSWER).bg(BKG_PANEL);
+pub const STL_BAR_ERR: Style = Style::new().fg(CLR_BAR_ERR).bg(BKG_PANEL);
+pub const STL_BAR_RUNNING: Style = Style::new().fg(CLR_BAR_RUNNING).bg(BKG_PANEL);
+
+// -- TBlock Content Styles
+pub const STL_TBLOCK_PROMPT: Style = Style::new().fg(TXT_PRIME).bg(BKG_PANEL);
+pub const STL_TBLOCK_ANSWER: Style = Style::new().fg(TXT_SECOND).bg(BKG_PANEL);
+pub const STL_TBLOCK_RUNNING_MSG: Style = Style::new().fg(TXT_SECOND).bg(BKG_PANEL);
+pub const STL_TBLOCK_RUNNING_ID: Style = Style::new().fg(TXT_MUTED).bg(BKG_PANEL);
+pub const STL_TBLOCK_RUNNING_MODEL: Style = Style::new().fg(TXT_HIGHLIGHT).bg(BKG_PANEL);

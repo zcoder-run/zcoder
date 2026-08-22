@@ -15,6 +15,7 @@ futures = { workspace = true }
 # -- CLI
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+textwrap = "0.16"
 # -- System
 sysinfo = { workspace = true }
 # -- Others
