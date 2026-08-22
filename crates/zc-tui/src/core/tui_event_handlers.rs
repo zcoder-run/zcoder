@@ -30,7 +30,7 @@ pub async fn handle_tui_event(
 		}
 
 		TuiEvent::Exec(status) => {
-			handle_exec_status(state, status);
+			handle_exec_status(state, status).await;
 			false
 		}
 
@@ -117,7 +117,7 @@ pub async fn handle_app_action(state: &mut TuiState, executor_tx: &ExecCmdTx, ac
 	}
 }
 
-pub fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
+pub async fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 	match status {
 		ExecEvent::RunStart(id) => {
 			state.set_status(format!("Sending to AI (run: {id})..."));
@@ -126,9 +126,15 @@ pub fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 			state.set_waiting(false);
 			state.set_status("Idle".to_string());
 		}
-		ExecEvent::RunError(_id) => {
-			// TODO: Get error
-			// state.set_last_error(Some(err));
+		ExecEvent::RunError(id) => {
+			state.set_waiting(false);
+			state.set_status("Error".to_string());
+			if let Ok(mm) = get_model_manager()
+				&& let Ok(run) = RunBmc::get(mm, id).await
+				&& let Some(err) = run.error
+			{
+				state.set_last_error(Some(err));
+			}
 		}
 	}
 }
@@ -143,6 +149,9 @@ pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -
 				&& let Ok(run) = RunBmc::get(mm, run_id).await
 			{
 				state.set_last_answer(run.answer);
+				if let Some(error) = run.error {
+					state.set_last_error(Some(error));
+				}
 			} else {
 				debug!("Error while model event (tui)")
 			}
@@ -165,22 +174,22 @@ mod tests {
 	use zc_common::event_base::new_mpsc_bounded;
 
 	#[tokio::test]
-	async fn test_core_tui_event_handlers_shift_m_toggle() -> Result<()> {
+	async fn test_core_tui_event_handlers_f2_toggle() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
 		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
 
-		let shift_m_event = TuiEvent::Term(Event::Key(KeyEvent {
-			code: KeyCode::Char('M'),
-			modifiers: KeyModifiers::SHIFT,
+		let f2_event = TuiEvent::Term(Event::Key(KeyEvent {
+			code: KeyCode::F(2),
+			modifiers: KeyModifiers::empty(),
 			kind: KeyEventKind::Press,
 			state: KeyEventState::empty(),
 		}));
 
 		// -- Exec
 		assert!(!state.show_sys_states());
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, shift_m_event.clone()).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, f2_event.clone()).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -191,7 +200,7 @@ mod tests {
 		assert!(matches!(received, TuiEvent::DoRedraw));
 
 		// -- Exec (Toggle back)
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, shift_m_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, f2_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -224,6 +233,86 @@ mod tests {
 		assert!(!quit);
 		assert!(state.memory() > 0);
 		assert!(state.db_memory() > 0);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_exec_run_error() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_waiting(true);
+		state.set_status("Sending to AI...".to_string());
+
+		let mm = get_model_manager()?;
+		let run_id = RunBmc::create(
+			mm,
+			zc_core::model::RunForCreate {
+				prompt: Some("Run error test".to_string()),
+				answer: None,
+			},
+		)
+		.await?;
+		RunBmc::update(
+			mm,
+			run_id,
+			zc_core::model::RunForUpdate {
+				error: Some("Script runtime failure".to_string()),
+				..Default::default()
+			},
+		)
+		.await?;
+
+		// -- Exec
+		handle_exec_status(&mut state, ExecEvent::RunError(run_id)).await;
+
+		// -- Check
+		assert!(!state.is_waiting());
+		assert_eq!(state.status(), "Error");
+		assert_eq!(state.last_error(), Some("Script runtime failure"));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_model_event_with_run_error() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+
+		let mm = get_model_manager()?;
+		let run_id = RunBmc::create(
+			mm,
+			zc_core::model::RunForCreate {
+				prompt: Some("Run error model event test".to_string()),
+				answer: None,
+			},
+		)
+		.await?;
+		RunBmc::update(
+			mm,
+			run_id,
+			zc_core::model::RunForUpdate {
+				error: Some("Syntax error in script".to_string()),
+				..Default::default()
+			},
+		)
+		.await?;
+
+		let model_event = TuiEvent::Model(zc_core::model::ModelEvent::new(
+			zc_core::model::EntityType::Run,
+			zc_core::model::EntityAction::Updated,
+			Some(run_id),
+			zc_core::model::RelIds::default(),
+		));
+
+		// -- Exec
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event).await?;
+
+		// -- Check
+		assert!(!quit);
+		assert_eq!(state.last_error(), Some("Syntax error in script"));
 
 		Ok(())
 	}

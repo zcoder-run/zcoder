@@ -25,6 +25,8 @@ impl StateProcessor {
 	}
 
 	pub fn apply_run_error(state: &mut TuiState, error: String) {
+		state.set_waiting(false);
+		state.set_status("Error".to_string());
 		state.set_last_error(Some(error));
 	}
 
@@ -80,6 +82,24 @@ mod tests {
 		// -- Check
 		assert!(state.memory() > 0);
 		assert!(state.db_memory() > 0);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_apply_run_error() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_waiting(true);
+		state.set_status("Sending to AI...".to_string());
+
+		// -- Exec
+		StateProcessor::apply_run_error(&mut state, "Execution failed".to_string());
+
+		// -- Check
+		assert!(!state.is_waiting());
+		assert_eq!(state.status(), "Error");
+		assert_eq!(state.last_error(), Some("Execution failed"));
 
 		Ok(())
 	}

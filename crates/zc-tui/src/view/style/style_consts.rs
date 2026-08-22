@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 // -- Scale - Txt Colors
 pub const TXT_100: Color = Color::Indexed(255);
@@ -27,6 +27,11 @@ pub const TXT_ERROR: Color = Color::Indexed(196);
 
 pub const STL_BKG: Style = Style::new().bg(BKG_APP);
 pub const STL_ANSWER: Style = Style::new().fg(TXT_SECOND).bg(BKG_PANEL);
+pub const STL_ANSWER_MUTED: Style = Style::new().fg(TXT_MUTED).bg(BKG_PANEL);
+pub const STL_ANSWER_ERR: Style = Style::new().fg(TXT_ERROR).bg(BKG_PANEL);
+pub const STL_ANSWER_ERR_HDR: Style = Style::new().fg(TXT_ERROR).bg(BKG_PANEL).add_modifier(Modifier::BOLD);
+pub const STL_ANSWER_ERR_BODY: Style = Style::new().fg(TXT_PRIME).bg(BKG_PANEL);
+pub const STL_ANSWER_ERR_CODE: Style = Style::new().fg(TXT_SECOND).bg(BKG_PANEL);
 
 // -- INPUT
 pub const STL_INPUT: Style = Style::new().fg(TXT_HIGHLIGHT).bg(BKG_INPUT);

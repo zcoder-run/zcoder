@@ -155,8 +155,11 @@ impl ExecutorInner {
 							.map_err(|e| Error::custom(format!("Failed to create tokio runtime for Lua: {e}")))?;
 						let outcome = rt
 							.block_on(script_engine_clone.exec(&lua_script, running_context))
-							.map_err(|e| Error::Aiprog(e.to_string()))?;
-						Ok(outcome.result.map(format_lua_outcome_value).map_err(|err| err.to_string()))
+							.map_err(Error::from)?;
+						Ok(outcome
+							.result
+							.map(format_lua_outcome_value)
+							.map_err(|err| format_lua_outcome_error(&err)))
 					})
 					.await
 					.map_err(|e| Error::custom(format!("Lua execution join error: {e}")))??;
@@ -258,6 +261,10 @@ fn format_lua_outcome_value(val: serde_json::Value) -> String {
 	}
 }
 
+fn format_lua_outcome_error(err: &aiprog::Error) -> String {
+	super::Error::from(err).to_string()
+}
+
 // endregion: --- Support
 
 // region:    --- Tests
@@ -323,6 +330,56 @@ mod tests {
 		// -- Check
 		assert!(formatted.contains("status: ok"));
 		assert!(formatted.contains("code: 200"));
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_format_lua_outcome_error_with_surround() -> Result<()> {
+		// -- Setup & Fixtures
+		let script = "local x = 1\nlocal y = undefined_function()\nreturn y";
+		let details = aiprog::LuaErrorDetails::new(
+			std::sync::Arc::from(script),
+			Some(2),
+			"attempt to call a nil value (global 'undefined_function')",
+			None,
+		);
+		let err = aiprog::Error::LuaScript(details);
+
+		// -- Exec
+		let formatted = format_lua_outcome_error(&err);
+
+		// -- Check
+		assert!(formatted.contains("Lua Error (line 2): attempt to call a nil value"));
+		assert!(formatted.contains("```lua"));
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_format_lua_outcome_error_simple() -> Result<()> {
+		// -- Setup & Fixtures
+		let details =
+			aiprog::LuaErrorDetails::new(std::sync::Arc::from("test"), None, "global variable not found", None);
+		let err = aiprog::Error::LuaScript(details);
+
+		// -- Exec
+		let formatted = format_lua_outcome_error(&err);
+
+		// -- Check
+		assert_eq!(formatted, "Lua Error: global variable not found");
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_format_lua_outcome_error_engine_custom() -> Result<()> {
+		// -- Setup & Fixtures
+		let raw_msg = "runtime error: script:5: attempt to index a number value\nstack traceback:\n\tscript:5: in main";
+		let err = aiprog::Error::Engine(aiprog::EngineError::Custom(raw_msg.to_string()));
+
+		// -- Exec
+		let formatted = format_lua_outcome_error(&err);
+
+		// -- Check
+		assert_eq!(formatted, raw_msg);
 		Ok(())
 	}
 }
