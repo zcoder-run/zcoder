@@ -7,12 +7,6 @@ use zc_common::event_base::new_mpsc_bounded;
 // -- Consts (harcoded for now)
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite";
 
-const DEFAULT_SRC_GLOBS: &[&str] = &[
-	// avoid root `**/..`
-	"src/**/*.{py,ts,js,rs,html,css,json,toml}",
-	"*.{py,ts,js,rs,html,css,json,toml,md}",
-];
-
 pub struct Executor {
 	action_rx: ExecCmdRx,
 	inner: ExecutorInner,
@@ -25,7 +19,6 @@ struct ExecutorInner {
 	base_chat_req: ChatRequest,
 	base_dir: String,
 	model: &'static str,
-	src_globs: &'static [&'static str],
 	script_engine: aiprog::ScriptEngine,
 }
 
@@ -33,7 +26,6 @@ struct ExecutorInner {
 pub struct ExecutorConfig {
 	base_dir: String,
 	model: &'static str,
-	src_globs: &'static [&'static str],
 }
 
 impl Default for ExecutorConfig {
@@ -41,7 +33,6 @@ impl Default for ExecutorConfig {
 		Self {
 			base_dir: ".demo-dir/".to_string(),
 			model: DEFAULT_MODEL,
-			src_globs: DEFAULT_SRC_GLOBS,
 		}
 	}
 }
@@ -54,11 +45,6 @@ impl ExecutorConfig {
 
 	pub fn with_model(mut self, model: &'static str) -> Self {
 		self.model = model;
-		self
-	}
-
-	pub fn with_src_globs(mut self, src_globs: &'static [&'static str]) -> Self {
-		self.src_globs = src_globs;
 		self
 	}
 }
@@ -84,7 +70,6 @@ impl Executor {
 					base_chat_req,
 					base_dir: config.base_dir,
 					model: config.model,
-					src_globs: config.src_globs,
 					script_engine,
 				},
 			},
@@ -123,7 +108,6 @@ impl ExecutorInner {
 		let status_tx = self.status_tx.clone();
 		let mut chat_req = self.base_chat_req.clone();
 		let base_dir = self.base_dir.clone(); // Assumes PathBuf or String that can clone
-		let src_globs = self.src_globs;
 		let genai_client = self.genai_client.clone(); // Assumes your client is cheaply cloneable (Arc-backed)
 		let model = self.model; // Assumes Copy/Clone (like &str or Copy enum)
 		let script_engine = self.script_engine.clone();
@@ -133,16 +117,12 @@ impl ExecutorInner {
 			// -- Send RunStart
 			let _ = status_tx.send(ExecEvent::RunStart(run_id)).await;
 
-			// -- Exec AI
+			// -- TODO: Load previous context from prog
+
+			// -- Build Prompt / Context
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
-			// load file context
-			let files_context = udiffx::load_files_context(&base_dir, src_globs)?;
-			if let Some(files_context) = files_context {
-				chat_req = chat_req.append_message(ChatMessage::user(files_context));
-			}
-
-			// execute chat
+			// -- Execute Request
 			let res = genai_client.exec_chat(model, chat_req, None).await?;
 
 			let ai_response = res
@@ -152,12 +132,12 @@ impl ExecutorInner {
 
 			let _ = zc_common::cache::save_file_cache("last-ai-response-raw.md", &ai_response);
 
-			// -- Process AI Response
+			// -- Process UDIFFX
 			let (file_changes, other_content) = udiffx::extract_file_changes(&ai_response, true)?;
 			let _change_statuses = udiffx::apply_file_changes(&base_dir, file_changes)?;
 			let raw_answer = other_content.unwrap_or_default();
 
-			// -- Process and execute AIPROG scripts if present
+			// -- Process AIPROG
 			let (aiprog_scripts, mut answer) = extract_aiprog_scripts(&raw_answer);
 
 			for lua_script in aiprog_scripts {
@@ -244,7 +224,7 @@ fn create_dir_context(base_dir: &str) -> Result<aiprog::DirContext> {
 	(|| -> core::result::Result<_, _> {
 		let read_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
 		let write_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
-		aiprog::DirContext::new("./", read_policy, write_policy)
+		aiprog::DirContext::new(base_dir, read_policy, write_policy)
 	})()
 	.map_err(super::Error::custom_from_err)
 }
