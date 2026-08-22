@@ -1,6 +1,6 @@
-use std::path::Path;
-use simple_fs::{SPath, ensure_file_dir};
 use crate::Result;
+use simple_fs::{SPath, ensure_file_dir};
+use std::path::Path;
 
 pub const CACHE_DIR: &str = ".zcoder/.cache";
 

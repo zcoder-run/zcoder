@@ -17,7 +17,12 @@ where
 	create_inner::<MC>(mm, fields, true, RelIds::default()).await
 }
 
-pub async fn update_with_rel_ids<MC>(mm: &ModelManager, id: Id, mut fields: SqliteFields, rel_ids: RelIds) -> Result<usize>
+pub async fn update_with_rel_ids<MC>(
+	mm: &ModelManager,
+	id: Id,
+	mut fields: SqliteFields,
+	rel_ids: RelIds,
+) -> Result<usize>
 where
 	MC: DbBmc,
 {
@@ -113,7 +118,12 @@ where
 	create_inner::<MC>(mm, fields, true, rel_ids).await
 }
 
-async fn create_inner<MC>(mm: &ModelManager, mut fields: SqliteFields, generate_uuid: bool, rel_ids: RelIds) -> Result<Id>
+async fn create_inner<MC>(
+	mm: &ModelManager,
+	mut fields: SqliteFields,
+	generate_uuid: bool,
+	rel_ids: RelIds,
+) -> Result<Id>
 where
 	MC: DbBmc,
 {

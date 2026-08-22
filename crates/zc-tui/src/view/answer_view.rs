@@ -1,5 +1,5 @@
-use crate::core::types::ScrollIden;
 use crate::core::TuiState;
+use crate::core::types::ScrollIden;
 use crate::view::style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -59,11 +59,7 @@ fn calculate_line_count(text: &str, width: u16) -> usize {
 	let mut count = 0;
 	for line in text.lines() {
 		let line_len = line.chars().count();
-		let wrapped = if line_len == 0 {
-			1
-		} else {
-			line_len.div_ceil(width)
-		};
+		let wrapped = if line_len == 0 { 1 } else { line_len.div_ceil(width) };
 		count += wrapped;
 	}
 	count.max(1)
@@ -137,10 +133,7 @@ mod tests {
 		let mut state = TuiState::new(None);
 
 		// -- Exec & Check: default state
-		assert_eq!(
-			content_text(&state),
-			"No answer yet. Type a prompt and press Enter."
-		);
+		assert_eq!(content_text(&state), "No answer yet. Type a prompt and press Enter.");
 
 		// -- Exec & Check: last_answer set
 		state.set_last_answer(Some("Model response text".to_string()));

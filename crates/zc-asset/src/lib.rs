@@ -5,7 +5,6 @@
 mod error;
 
 pub use error::{Error, Result};
-
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
 
@@ -41,9 +40,7 @@ pub fn extract_asset(path: &str) -> Result<Vec<u8>> {
 	let mut archive = ZipArchive::new(Cursor::new(ASSETS_ZIP))?;
 	let mut file = archive
 		.by_name(normalized_path)
-		.map_err(|_| Error::AssetNotFound {
-			path: path.to_string(),
-		})?;
+		.map_err(|_| Error::AssetNotFound { path: path.to_string() })?;
 
 	let mut content = Vec::with_capacity(file.size() as usize);
 	file.read_to_end(&mut content)?;

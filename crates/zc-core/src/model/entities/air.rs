@@ -141,7 +141,8 @@ impl AirBmc {
 		let id = db
 			.exec_in_tx(|tx_db| {
 				// Atomically increment air_idx_seq on the Run record
-				let sql = "UPDATE run SET air_idx_seq = air_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING air_idx_seq";
+				let sql =
+					"UPDATE run SET air_idx_seq = air_idx_seq + 1, mtime = ?2 WHERE id = ?1 RETURNING air_idx_seq";
 				let now = zc_common::time::now_micro();
 				let new_idx: i64 = tx_db.exec_returning_as(sql, (run_id, now))?;
 

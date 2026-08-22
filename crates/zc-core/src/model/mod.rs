@@ -1,11 +1,11 @@
 // region:    --- Modules
 
-mod support;
 mod bus;
 mod db;
 mod entities;
 mod error;
 mod model_manager;
+mod support;
 mod types;
 
 pub use bus::*;

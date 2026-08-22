@@ -11,7 +11,6 @@ pub struct SysState {
 
 // endregion: --- Types
 
-
 #[allow(dead_code)]
 impl SysState {
 	pub fn refresh_memory(&mut self) -> u64 {

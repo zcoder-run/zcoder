@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
 
 type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
