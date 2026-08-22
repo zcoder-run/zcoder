@@ -1,3 +1,4 @@
+use crate::core::sys_state::SysState;
 use crate::core::types::{ScrollIden, ScrollZones};
 use ratatui::layout::Rect;
 
@@ -8,6 +9,10 @@ pub struct TuiState {
 	last_answer: Option<String>,
 	last_error: Option<String>,
 	scroll_zones: ScrollZones,
+	show_sys_states: bool,
+	sys_state: SysState,
+	memory: u64,
+	db_memory: u64,
 
 	// Reserved for multi-pane focus tracking and keyboard scroll routing.
 	#[allow(dead_code)]
@@ -23,6 +28,10 @@ impl TuiState {
 			last_answer: None,
 			last_error: None,
 			scroll_zones: ScrollZones::default(),
+			show_sys_states: false,
+			sys_state: SysState::default(),
+			memory: 0,
+			db_memory: 0,
 			active_scroll_zone_iden: None,
 		}
 	}
@@ -73,6 +82,51 @@ impl TuiState {
 
 	pub fn set_last_error(&mut self, error: Option<String>) {
 		self.last_error = error;
+	}
+
+	#[allow(dead_code)]
+	pub fn show_sys_states(&self) -> bool {
+		self.show_sys_states
+	}
+
+	#[allow(dead_code)]
+	pub fn set_show_sys_states(&mut self, show: bool) {
+		self.show_sys_states = show;
+	}
+
+	#[allow(dead_code)]
+	pub fn toggle_show_sys_states(&mut self) {
+		self.show_sys_states = !self.show_sys_states;
+	}
+
+	#[allow(dead_code)]
+	pub fn memory(&self) -> u64 {
+		self.memory
+	}
+
+	#[allow(dead_code)]
+	pub fn refresh_sys_state(&mut self) {
+		self.memory = self.sys_state.refresh_memory();
+	}
+
+	#[allow(dead_code)]
+	pub fn memory_fmt(&self) -> String {
+		format_memory(self.memory)
+	}
+
+	#[allow(dead_code)]
+	pub fn db_memory(&self) -> u64 {
+		self.db_memory
+	}
+
+	#[allow(dead_code)]
+	pub fn set_db_memory(&mut self, db_memory: u64) {
+		self.db_memory = db_memory;
+	}
+
+	#[allow(dead_code)]
+	pub fn db_memory_fmt(&self) -> String {
+		format_memory(self.db_memory)
 	}
 
 	pub fn scroll_zones(&self) -> &ScrollZones {
@@ -144,6 +198,27 @@ impl TuiState {
 		}
 	}
 }
+
+// region:    --- Support
+
+fn format_memory(bytes: u64) -> String {
+	const KB: f64 = 1024.0;
+	const MB: f64 = KB * 1024.0;
+	const GB: f64 = MB * 1024.0;
+
+	let bytes_f = bytes as f64;
+	if bytes_f >= GB {
+		format!("{:.2} GB", bytes_f / GB)
+	} else if bytes_f >= MB {
+		format!("{:.2} MB", bytes_f / MB)
+	} else if bytes_f >= KB {
+		format!("{:.2} KB", bytes_f / KB)
+	} else {
+		format!("{bytes} B")
+	}
+}
+
+// endregion: --- Support
 
 // region:    --- Tests
 
@@ -244,6 +319,52 @@ mod tests {
 		let clamped = state.clamp_scroll(iden, 50);
 		assert_eq!(clamped, 15);
 		assert_eq!(state.get_scroll(iden), 15);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_sys_state_toggle_and_refresh() -> Result<()> {
+		let mut state = TuiState::new(None);
+
+		assert!(!state.show_sys_states());
+		state.toggle_show_sys_states();
+		assert!(state.show_sys_states());
+		state.toggle_show_sys_states();
+		assert!(!state.show_sys_states());
+
+		state.refresh_sys_state();
+		assert!(state.memory() > 0);
+		assert!(
+			state.memory_fmt().ends_with("MB")
+				|| state.memory_fmt().ends_with("KB")
+				|| state.memory_fmt().ends_with("GB")
+		);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_format_memory() -> Result<()> {
+		assert_eq!(format_memory(500), "500 B");
+		assert_eq!(format_memory(1024), "1.00 KB");
+		assert_eq!(format_memory(1024 * 1024), "1.00 MB");
+		assert_eq!(format_memory(49_820_467), "47.51 MB");
+		assert_eq!(format_memory(1024 * 1024 * 1024), "1.00 GB");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_db_memory() -> Result<()> {
+		let mut state = TuiState::new(None);
+
+		assert_eq!(state.db_memory(), 0);
+		assert_eq!(state.db_memory_fmt(), "0 B");
+
+		state.set_db_memory(247_459);
+		assert_eq!(state.db_memory(), 247_459);
+		assert_eq!(state.db_memory_fmt(), "241.66 KB");
 
 		Ok(())
 	}

@@ -89,6 +89,8 @@ time-tz = {version = "2.0.0", features = ["system"]}
 tracing = "0.1"
 tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 tracing-appender = "0.2"
+# -- System
+sysinfo = "0.33"
 # -- Others
 macro_rules_attribute = "0.2.2"
 uuid = {version = "1.18", features = ["v4", "v7", "fast-rng"]}
