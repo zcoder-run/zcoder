@@ -15,5 +15,7 @@ futures = { workspace = true }
 # -- CLI
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+# -- System
+sysinfo = { workspace = true }
 # -- Others
 derive_more = { workspace = true }

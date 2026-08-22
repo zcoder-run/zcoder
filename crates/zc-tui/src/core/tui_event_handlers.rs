@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::core::TuiState;
 use crate::core::event::{AppActionEvent, TuiEvent, TuiTx};
+use crate::core::tui_state::StateProcessor;
 use crate::core::types::ScrollIden;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::Position;
@@ -15,67 +16,76 @@ pub async fn handle_tui_event(
 	executor_tx: &ExecCmdTx,
 	app_event: TuiEvent,
 ) -> Result<bool> {
-	match app_event {
+	let should_quit = match app_event {
 		TuiEvent::Term(term_event) => {
 			handle_term_event(state, tui_tx, term_event).await;
+			false
 		}
 
 		TuiEvent::Action(action) => {
 			if handle_app_action(state, executor_tx, action).await? {
 				return Ok(true);
 			}
+			false
 		}
 
 		TuiEvent::Exec(status) => {
 			handle_exec_status(state, status);
+			false
 		}
 
 		TuiEvent::Model(model_event) => {
 			handle_model_event(state, model_event).await?;
+			false
 		}
 
-		TuiEvent::Tick | TuiEvent::DoRedraw => {}
-	}
-	Ok(false)
+		TuiEvent::Tick | TuiEvent::DoRedraw => false,
+	};
+
+	StateProcessor::process_sys_metrics(state).await;
+
+	Ok(should_quit)
 }
 
 pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event: Event) {
 	match term_event {
-		Event::Key(key) if key.kind == KeyEventKind::Press => {
-			match key.code {
-				KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
-				}
-				KeyCode::Enter => {
-					let trimmed_input = state.input().trim().to_string();
-					if trimmed_input == "/q" {
-						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
-					} else if !trimmed_input.is_empty() && !state.is_waiting() {
-						let prompt = state.input().to_string();
-						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(prompt))).await;
-					}
-				}
-				KeyCode::PageUp => {
-					state.dec_scroll(ScrollIden::AnswerContent, 5);
-				}
-				KeyCode::PageDown => {
-					state.inc_scroll(ScrollIden::AnswerContent, 5);
-				}
-				KeyCode::Home => {
-					state.set_scroll(ScrollIden::AnswerContent, 0);
-				}
-				KeyCode::End => {
-					state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
-				}
-				KeyCode::Backspace => {
-					state.pop_input();
-				}
-				KeyCode::Char(c) => {
-					state.push_input(c);
-				}
-				_ => {}
+		Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+			KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+				let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
 			}
-		}
+			KeyCode::F(2) => {
+				state.toggle_show_sys_states();
+				let _ = tui_tx.send(TuiEvent::DoRedraw).await;
+			}
+			KeyCode::Enter => {
+				let trimmed_input = state.input().trim().to_string();
+				if trimmed_input == "/q" {
+					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
+				} else if !trimmed_input.is_empty() && !state.is_waiting() {
+					let prompt = state.input().to_string();
+					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(prompt))).await;
+				}
+			}
+			KeyCode::PageUp => {
+				state.dec_scroll(ScrollIden::AnswerContent, 5);
+			}
+			KeyCode::PageDown => {
+				state.inc_scroll(ScrollIden::AnswerContent, 5);
+			}
+			KeyCode::Home => {
+				state.set_scroll(ScrollIden::AnswerContent, 0);
+			}
+			KeyCode::End => {
+				state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
+			}
+			KeyCode::Backspace => {
+				state.pop_input();
+			}
+			KeyCode::Char(c) => {
+				state.push_input(c);
+			}
+			_ => {}
+		},
 		Event::Mouse(mouse_event) => {
 			let pos = Position::new(mouse_event.column, mouse_event.row);
 			if let Some(iden) = state.scroll_zones().find_zone_for_pos(pos) {
@@ -143,3 +153,80 @@ pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -
 	}
 	Ok(())
 }
+
+// region:    --- Tests
+
+#[cfg(test)]
+mod tests {
+	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
+
+	use super::*;
+	use crossterm::event::{KeyEvent, KeyEventState};
+	use zc_common::event_base::new_mpsc_bounded;
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_shift_m_toggle() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
+		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+
+		let shift_m_event = TuiEvent::Term(Event::Key(KeyEvent {
+			code: KeyCode::Char('M'),
+			modifiers: KeyModifiers::SHIFT,
+			kind: KeyEventKind::Press,
+			state: KeyEventState::empty(),
+		}));
+
+		// -- Exec
+		assert!(!state.show_sys_states());
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, shift_m_event.clone()).await?;
+
+		// -- Check
+		assert!(!quit);
+		assert!(state.show_sys_states());
+		assert!(state.memory() > 0);
+		assert!(state.db_memory() > 0);
+		let received = rx.recv().await?;
+		assert!(matches!(received, TuiEvent::DoRedraw));
+
+		// -- Exec (Toggle back)
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, shift_m_event).await?;
+
+		// -- Check
+		assert!(!quit);
+		assert!(!state.show_sys_states());
+		let received = rx.recv().await?;
+		assert!(matches!(received, TuiEvent::DoRedraw));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_model_event_refreshes_sys_metrics() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_show_sys_states(true);
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+
+		let model_event = TuiEvent::Model(zc_core::model::ModelEvent::new(
+			zc_core::model::EntityType::Run,
+			zc_core::model::EntityAction::Created,
+			None,
+			zc_core::model::RelIds::default(),
+		));
+
+		// -- Exec
+		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event).await?;
+
+		// -- Check
+		assert!(!quit);
+		assert!(state.memory() > 0);
+		assert!(state.db_memory() > 0);
+
+		Ok(())
+	}
+}
+
+// endregion: --- Tests

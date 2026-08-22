@@ -3,6 +3,7 @@
 mod event;
 mod model_loop;
 mod ping_timer;
+pub(crate) mod sys_state;
 mod term_reader;
 mod tui_event_handlers;
 mod tui_impl;
