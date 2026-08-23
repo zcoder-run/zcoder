@@ -81,7 +81,7 @@ pub fn build_answer_block(answer: &str, content_width: u16) -> Vec<Line<'static>
 pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 	let mut lines = Vec::new();
 
-	let status_prefix = if info.is_running { "AI Running" } else { "AI Done" };
+	let status_prefix = if info.is_running { "AI Running" } else { "AI Done ✔ " };
 	let mut line1_parts = vec![status_prefix.to_string()];
 
 	if let Some(ref model) = info.model
