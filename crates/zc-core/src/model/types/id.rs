@@ -7,6 +7,12 @@ use uuid::Uuid;
 #[mra::derive(Debug, ScalarStruct!)]
 pub struct Id(Uuid);
 
+impl Default for Id {
+	fn default() -> Self {
+		Id(Uuid::nil())
+	}
+}
+
 impl Id {
 	pub fn as_uuid(&self) -> &Uuid {
 		&self.0

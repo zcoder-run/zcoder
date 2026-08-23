@@ -14,7 +14,7 @@ pub enum TuiEvent {
 	Action(AppActionEvent),
 	Exec(ExecEvent),
 	Model(ModelEvent),
-	Tick,
+	Tick(i64),
 	#[allow(unused)]
 	DoRedraw,
 }
@@ -29,6 +29,6 @@ pub enum AppActionEvent {
 
 // region:    --- Ping Event
 
-pub type PingTimerTx = MpscTx<()>;
+pub type PingTimerTx = MpscTx<i64>;
 
 // endregion: --- Ping Event

@@ -73,8 +73,8 @@ impl StateProcessor {
 		}
 	}
 
-	pub fn apply_tick(state: &mut TuiState) {
-		state.update_elapsed_time(zc_common::time::now_micro());
+	pub fn apply_tick(state: &mut TuiState, ts: i64) {
+		state.update_elapsed_time(ts);
 	}
 
 	pub async fn process_sys_metrics(state: &mut TuiState) {

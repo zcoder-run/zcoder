@@ -1,5 +1,5 @@
 use super::event::TuiEvent;
-use super::{term_reader, tui_loop};
+use super::{ping_timer, term_reader, tui_loop};
 use crate::Result;
 use crate::core::model_loop::run_model_loop;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
@@ -34,8 +34,11 @@ pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial
 	// -- Start Term Reader
 	term_reader::run_term_reader(tui_tx.clone());
 
+	// -- Start Ping Timer
+	let ping_tx = ping_timer::start_ping_timer(tui_tx.clone())?;
+
 	// -- Start TUI Loop
-	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, executor_tx, initial_prompt).await;
+	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, ping_tx, executor_tx, initial_prompt).await;
 
 	// -- Restore Terminal
 	ratatui::restore();

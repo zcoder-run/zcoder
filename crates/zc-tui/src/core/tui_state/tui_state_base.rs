@@ -131,6 +131,10 @@ impl TuiState {
 		}
 	}
 
+	pub fn should_be_pinged(&self) -> bool {
+		self.is_waiting() || self.ai_work_info().is_some_and(|info| info.is_running)
+	}
+
 	#[allow(dead_code)]
 	pub fn show_sys_states(&self) -> bool {
 		self.show_sys_states
@@ -297,6 +301,32 @@ mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 	use super::*;
+
+	#[test]
+	fn test_core_tui_state_should_be_pinged() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		assert!(!state.should_be_pinged());
+
+		// -- Exec & Check: Waiting demand
+		state.set_waiting(true);
+		assert!(state.should_be_pinged());
+
+		state.set_waiting(false);
+		assert!(!state.should_be_pinged());
+
+		// -- Exec & Check: Active AI work demand
+		let info = AiWorkInfo::new(true);
+		state.set_ai_work_info(Some(info));
+		assert!(state.should_be_pinged());
+
+		if let Some(info) = state.ai_work_info_mut() {
+			info.is_running = false;
+		}
+		assert!(!state.should_be_pinged());
+
+		Ok(())
+	}
 
 	#[test]
 	fn test_core_tui_state_scroll_inc_dec() -> Result<()> {

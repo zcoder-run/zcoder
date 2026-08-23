@@ -1,5 +1,6 @@
 // region:    --- Modules
 
+mod debouncer;
 mod event;
 mod model_loop;
 mod ping_timer;

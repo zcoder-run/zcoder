@@ -39,8 +39,8 @@ pub async fn handle_tui_event(
 			false
 		}
 
-		TuiEvent::Tick => {
-			StateProcessor::apply_tick(state);
+		TuiEvent::Tick(ts) => {
+			StateProcessor::apply_tick(state, ts);
 			false
 		}
 
@@ -394,7 +394,7 @@ mod tests {
 		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
 
 		// -- Exec: Tick
-		handle_tui_event(&mut state, &tui_tx, &exec_tx, TuiEvent::Tick).await?;
+		handle_tui_event(&mut state, &tui_tx, &exec_tx, TuiEvent::Tick(2_500_000)).await?;
 
 		// -- Setup: Update Aixc to Done with tokens
 		AirBmc::update(
