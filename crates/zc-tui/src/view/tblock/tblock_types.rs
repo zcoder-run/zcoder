@@ -28,6 +28,7 @@ pub struct AiWorkInfo {
 	pub input_tokens: Option<u32>,
 	pub output_tokens: Option<u32>,
 	pub reasoning_tokens: Option<u32>,
+	pub anim_phase: Option<usize>,
 }
 
 // endregion: --- Types
@@ -88,6 +89,11 @@ impl AiWorkInfo {
 		self.input_tokens = input;
 		self.output_tokens = output;
 		self.reasoning_tokens = reasoning;
+		self
+	}
+
+	pub fn with_anim_phase(mut self, phase: usize) -> Self {
+		self.anim_phase = Some(phase);
 		self
 	}
 }

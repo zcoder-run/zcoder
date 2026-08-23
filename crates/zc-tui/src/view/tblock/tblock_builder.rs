@@ -3,6 +3,7 @@ use crate::view::style::{
 	STL_TBLOCK_RUNNING_MODEL, STL_TBLOCK_RUNNING_MSG, STL_TBLOCK_WORK_DETAIL, STL_TBLOCK_WORK_MSG,
 };
 use crate::view::tblock::{AiWorkInfo, TBlockKind};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 
 /// Formats an integer count with comma thousands separators.
@@ -41,6 +42,26 @@ pub fn format_cost(cost: f64) -> String {
 /// Creates a styled indicator bar span for the given `TBlockKind`.
 pub fn bar_span(kind: TBlockKind) -> Span<'static> {
 	Span::styled(kind.bar_glyph(), kind.bar_style())
+}
+
+/// Builds the animated 7-character prefix `AI ▶▶▶▶` with grayscale wave shading.
+pub fn running_arrow_spans(phase: usize) -> Vec<Span<'static>> {
+	const ARROW_GRAYS: [Color; 4] = [
+		Color::Indexed(238),
+		Color::Indexed(243),
+		Color::Indexed(248),
+		Color::Indexed(255),
+	];
+
+	let mut spans = Vec::with_capacity(5);
+	spans.push(Span::styled("AI ", STL_TBLOCK_WORK_MSG));
+	for i in 0..4 {
+		let offset = (4 + (phase % 4) - i) % 4;
+		let shade_idx = 3 - offset;
+		let color = ARROW_GRAYS[shade_idx];
+		spans.push(Span::styled("▶", Style::new().fg(color)));
+	}
+	spans
 }
 
 /// Pre-wraps content to fit within `content_width` accounting for the indicator bar width,
@@ -97,26 +118,41 @@ pub fn build_answer_block(answer: &str, content_width: u16) -> Vec<Line<'static>
 pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 	let mut lines = Vec::new();
 
-	let status_prefix = if info.is_running { "AI Running" } else { "AI Done" };
-	let mut line1_parts = vec![format!("{status_prefix:<10}")];
-
-	if let Some(ref model) = info.model
-		&& !model.is_empty()
-	{
-		line1_parts.push(model.clone());
+	if info.is_running {
+		let phase = info
+			.anim_phase
+			.unwrap_or_else(|| zc_common::time::tick_phase(zc_common::time::now_micro(), 0.15, 4) as usize);
+		let mut spans = vec![bar_span(TBlockKind::Work)];
+		spans.extend(running_arrow_spans(phase));
+		if let Some(ref model) = info.model
+			&& !model.is_empty()
+		{
+			spans.push(Span::styled(" - ", STL_TBLOCK_WORK_MSG));
+			spans.push(Span::styled(model.clone(), STL_TBLOCK_WORK_MSG));
+		}
+		if let Some(ref dur) = info.duration
+			&& !dur.is_empty()
+		{
+			spans.push(Span::styled(" - ", STL_TBLOCK_WORK_MSG));
+			spans.push(Span::styled(dur.clone(), STL_TBLOCK_WORK_MSG));
+		}
+		lines.push(Line::from(spans));
+	} else {
+		let mut spans = vec![bar_span(TBlockKind::Work), Span::styled("AI Done", STL_TBLOCK_WORK_MSG)];
+		if let Some(ref model) = info.model
+			&& !model.is_empty()
+		{
+			spans.push(Span::styled(" - ", STL_TBLOCK_WORK_MSG));
+			spans.push(Span::styled(model.clone(), STL_TBLOCK_WORK_MSG));
+		}
+		if let Some(ref dur) = info.duration
+			&& !dur.is_empty()
+		{
+			spans.push(Span::styled(" - ", STL_TBLOCK_WORK_MSG));
+			spans.push(Span::styled(dur.clone(), STL_TBLOCK_WORK_MSG));
+		}
+		lines.push(Line::from(spans));
 	}
-
-	if let Some(ref dur) = info.duration
-		&& !dur.is_empty()
-	{
-		line1_parts.push(dur.clone());
-	}
-
-	let line1_text = line1_parts.join(" - ");
-	lines.push(Line::from(vec![
-		bar_span(TBlockKind::Work),
-		Span::styled(line1_text, STL_TBLOCK_WORK_MSG),
-	]));
 
 	if !info.is_running && (info.cost.is_some() || info.input_tokens.is_some() || info.output_tokens.is_some()) {
 		let tok_str = if info.input_tokens.is_some() || info.output_tokens.is_some() {
@@ -137,15 +173,14 @@ pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 
 		let line2_text = if let Some(cost) = info.cost {
 			let cost_formatted = format_cost(cost);
+			let cost_padded = format!("{cost_formatted:<7}");
 			if let Some(tok) = tok_str {
-				format!("{cost_formatted:<10} - {tok}")
+				format!("{cost_padded} - {tok}")
 			} else {
 				cost_formatted
 			}
-		} else if let Some(tok) = tok_str {
-			tok
 		} else {
-			String::new()
+			tok_str.unwrap_or_default()
 		};
 
 		lines.push(Line::from(vec![
@@ -435,18 +470,34 @@ mod tests {
 	#[test]
 	fn test_tblock_builder_ai_work_running() -> Result<()> {
 		// -- Setup & Fixtures
-		let info = AiWorkInfo::new(true).with_model("gemini-flash-4.7").with_duration("5s 194ms");
+		let info = AiWorkInfo::new(true)
+			.with_model("gemini-flash-4.7")
+			.with_duration("5s 194ms")
+			.with_anim_phase(0);
 
 		// -- Exec
 		let lines = build_ai_work_block(&info);
 
 		// -- Check
 		assert_eq!(lines.len(), 1);
-		assert_eq!(lines[0].spans.len(), 2);
 		assert_eq!(lines[0].spans[0].content, "▌ ");
 		assert_eq!(lines[0].spans[0].style, STL_BAR_WORK);
-		assert_eq!(lines[0].spans[1].content, "AI Running - gemini-flash-4.7 - 5s 194ms");
+		assert_eq!(lines[0].spans[1].content, "AI ");
 		assert_eq!(lines[0].spans[1].style, STL_TBLOCK_WORK_MSG);
+		assert_eq!(lines[0].spans[2].content, "▶");
+		assert_eq!(lines[0].spans[3].content, "▶");
+		assert_eq!(lines[0].spans[4].content, "▶");
+		assert_eq!(lines[0].spans[5].content, "▶");
+		assert_eq!(lines[0].spans[6].content, " - ");
+		assert_eq!(lines[0].spans[7].content, "gemini-flash-4.7");
+		assert_eq!(lines[0].spans[8].content, " - ");
+		assert_eq!(lines[0].spans[9].content, "5s 194ms");
+
+		// Check phase 0 gradient on arrows
+		assert_eq!(lines[0].spans[2].style.fg, Some(Color::Indexed(255)));
+		assert_eq!(lines[0].spans[3].style.fg, Some(Color::Indexed(238)));
+		assert_eq!(lines[0].spans[4].style.fg, Some(Color::Indexed(243)));
+		assert_eq!(lines[0].spans[5].style.fg, Some(Color::Indexed(248)));
 
 		Ok(())
 	}
@@ -467,14 +518,18 @@ mod tests {
 		assert_eq!(lines.len(), 2);
 		assert_eq!(lines[0].spans[0].content, "▌ ");
 		assert_eq!(lines[0].spans[0].style, STL_BAR_WORK);
-		assert_eq!(lines[0].spans[1].content, "AI Done    - gemini-flash-4.7 - 1m 43s");
+		assert_eq!(lines[0].spans[1].content, "AI Done");
 		assert_eq!(lines[0].spans[1].style, STL_TBLOCK_WORK_MSG);
+		assert_eq!(lines[0].spans[2].content, " - ");
+		assert_eq!(lines[0].spans[3].content, "gemini-flash-4.7");
+		assert_eq!(lines[0].spans[4].content, " - ");
+		assert_eq!(lines[0].spans[5].content, "1m 43s");
 
 		assert_eq!(lines[1].spans[0].content, "▌ ");
 		assert_eq!(lines[1].spans[0].style, STL_BAR_WORK);
 		assert_eq!(
 			lines[1].spans[1].content,
-			"$0.12      - in: 1,030 tk | out: 4,023 tk (2,203 tk reas)"
+			"$0.12   - in: 1,030 tk | out: 4,023 tk (2,203 tk reas)"
 		);
 		assert_eq!(lines[1].spans[1].style, STL_TBLOCK_WORK_DETAIL);
 
@@ -528,7 +583,11 @@ mod tests {
 
 		// -- Check
 		assert_eq!(lines.len(), 1);
-		assert_eq!(lines[0].spans[1].content, "AI Done    - claude-3-5-sonnet - 3s");
+		assert_eq!(lines[0].spans[1].content, "AI Done");
+		assert_eq!(lines[0].spans[2].content, " - ");
+		assert_eq!(lines[0].spans[3].content, "claude-3-5-sonnet");
+		assert_eq!(lines[0].spans[4].content, " - ");
+		assert_eq!(lines[0].spans[5].content, "3s");
 
 		Ok(())
 	}

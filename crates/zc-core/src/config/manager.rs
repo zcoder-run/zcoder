@@ -100,7 +100,7 @@ mod tests {
 
 		// -- Check
 		assert_eq!(config.maestro.model, "$small");
-		assert_eq!(manager.refresh_if_modified()?, false);
+		assert!(!manager.refresh_if_modified()?);
 
 		Ok(())
 	}
