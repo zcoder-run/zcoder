@@ -1,3 +1,5 @@
+[scope]
+base_dir = "./"   # When relative, relative to cwd of the project_dir
 
 [maestro]
 
