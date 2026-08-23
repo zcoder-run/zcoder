@@ -21,6 +21,7 @@ zc-asset = { workspace = true }
 zc-common = { workspace = true }
 # -- AI
 genai = { workspace = true }
+aicost = { workspace = true }
 udiffx = { workspace = true }
 markex = { workspace = true }
 aiprog = { workspace = true }

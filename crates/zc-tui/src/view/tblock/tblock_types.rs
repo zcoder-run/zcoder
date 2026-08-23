@@ -19,11 +19,12 @@ pub enum TBlockKind {
 
 /// Information used to render an AI work block in running or completed state.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AiWorkInfo {
 	pub is_running: bool,
 	pub model: Option<String>,
 	pub duration: Option<String>,
+	pub cost: Option<f64>,
 	pub input_tokens: Option<u32>,
 	pub output_tokens: Option<u32>,
 	pub reasoning_tokens: Option<u32>,
@@ -75,6 +76,11 @@ impl AiWorkInfo {
 
 	pub fn with_duration(mut self, duration: impl Into<String>) -> Self {
 		self.duration = Some(duration.into());
+		self
+	}
+
+	pub fn with_cost(mut self, cost: Option<f64>) -> Self {
+		self.cost = cost;
 		self
 	}
 

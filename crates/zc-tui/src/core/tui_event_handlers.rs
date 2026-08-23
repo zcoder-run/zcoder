@@ -168,6 +168,7 @@ pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -
 				let model = air.model_ov.or(air.model_upstream);
 				let start_us = air.ai_start.or(air.start).unwrap_or(air.ctime).as_i64();
 				let duration_us = air.ai_end.or(air.end).map(|end| (end.as_i64() - start_us).max(0));
+				let cost = air.cost;
 				let tokens = (
 					air.token_in.map(|v| v as u32),
 					air.token_out.map(|v| v as u32),
@@ -175,7 +176,7 @@ pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -
 				);
 
 				if air.end.is_some() || air.ai_end.is_some() || air.end_state.is_some() {
-					StateProcessor::apply_ai_done(state, model, duration_us, tokens);
+					StateProcessor::apply_ai_done(state, model, duration_us, cost, tokens);
 				} else {
 					StateProcessor::apply_ai_start(state, model, start_us);
 				}
@@ -403,6 +404,7 @@ mod tests {
 			zc_core::model::AirForUpdate {
 				ai_end: Some(3_500_000.into()),
 				end: Some(3_500_000.into()),
+				cost: Some(0.0125),
 				token_in: Some(512),
 				token_out: Some(128),
 				token_reason: Some(64),
@@ -421,11 +423,12 @@ mod tests {
 		));
 		handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event_done).await?;
 
-		// -- Check: AI work info completed with token counts and duration
+		// -- Check: AI work info completed with token counts, duration, and cost
 		let info = state.ai_work_info().ok_or("should have ai work info")?;
 		assert!(!info.is_running);
 		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
 		assert_eq!(info.duration.as_deref(), Some("2s 500ms"));
+		assert_eq!(info.cost, Some(0.0125));
 		assert_eq!(info.input_tokens, Some(512));
 		assert_eq!(info.output_tokens, Some(128));
 		assert_eq!(info.reasoning_tokens, Some(64));

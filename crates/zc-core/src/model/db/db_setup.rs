@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS run (
 		end_state   TEXT,
 
 		model       TEXT,
+		total_cost  REAL,
 		air_idx_seq INTEGER NOT NULL DEFAULT 0
 ) STRICT, WITHOUT ROWID",
 );

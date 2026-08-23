@@ -1,8 +1,9 @@
 // region:    --- Modules
 
 use crate::exec::Result;
+use crate::exec::air_exec::pricing::price_it;
 use crate::exec::air_exec::usage::{ExtractedUsage, extract_usage_metrics};
-use crate::model::{AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager};
+use crate::model::{AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager, RunBmc};
 use genai::chat::{ChatRequest, ChatResponse};
 
 // endregion: --- Modules
@@ -29,6 +30,7 @@ pub async fn exec_air_chat(
 			let end = ai_end;
 			let air_u = prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
 			let _ = AirBmc::update(mm, air_id, air_u).await;
+			let _ = RunBmc::recompute_total_cost(mm, run_id).await;
 			res
 		}
 		Err(err) => {
@@ -94,6 +96,13 @@ pub fn prep_air_for_success(
 		token_cache_write,
 	} = extract_usage_metrics(&res.usage);
 
+	let cost = price_it(
+		res.provider_model_iden.adapter_kind.as_str(),
+		&res.provider_model_iden.model_name,
+		&res.usage,
+	)
+	.map(|p| p.cost);
+
 	AirForUpdate {
 		model_upstream,
 		answer_json,
@@ -103,6 +112,7 @@ pub fn prep_air_for_success(
 		token_reason,
 		token_cache_hit,
 		token_cache_write,
+		cost,
 		end_state: Some(AirEndState::Success.to_string()),
 		ai_start,
 		ai_end,
@@ -203,6 +213,8 @@ mod tests {
 		assert_eq!(update.token_out, Some(20));
 		assert_eq!(update.token_reason, Some(8));
 		assert_eq!(update.token_cache_hit, Some(5));
+		assert!(update.cost.is_some());
+		assert!(update.cost.ok_or("should have cost")? > 0.0);
 		assert_eq!(update.end_state.as_deref(), Some("success"));
 		assert_eq!(update.ai_start, Some(ai_start));
 		assert_eq!(update.ai_end, Some(ai_end));

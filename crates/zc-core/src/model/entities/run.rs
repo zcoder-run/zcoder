@@ -18,6 +18,7 @@ pub struct Run {
 	pub error: Option<String>,
 	pub end: Option<EpochUs>,
 	pub end_state: Option<String>,
+	pub total_cost: Option<f64>,
 	pub air_idx_seq: i64,
 }
 
@@ -34,6 +35,7 @@ pub struct RunForUpdate {
 	pub error: Option<String>,
 	pub end: Option<EpochUs>,
 	pub end_state: Option<String>,
+	pub total_cost: Option<f64>,
 }
 
 /// End state for a Run execution.
@@ -78,6 +80,17 @@ impl RunBmc {
 
 	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Run>> {
 		support::list::<Self, _>(mm, list_options, None).await
+	}
+
+	pub async fn recompute_total_cost(mm: &ModelManager, run_id: Id) -> Result<f64> {
+		let airs = super::AirBmc::list_for_run(mm, run_id).await?;
+		let total_cost: f64 = airs.iter().filter_map(|a| a.cost).sum();
+		let run_u = RunForUpdate {
+			total_cost: Some(total_cost),
+			..Default::default()
+		};
+		Self::update(mm, run_id, run_u).await?;
+		Ok(total_cost)
 	}
 }
 
@@ -136,6 +149,57 @@ mod tests {
 		assert_eq!(run.answer.as_deref(), Some("task finished"));
 		assert_eq!(run.end, Some(end_time));
 		assert_eq!(run.end_state.as_deref(), Some("success"));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_model_run_bmc_recompute_total_cost() -> Result<()> {
+		// -- Setup & Fixtures
+		let mm = get_model_manager()?;
+		let run_c = RunForCreate {
+			prompt: Some("cost aggregate test".to_string()),
+			answer: None,
+		};
+		let run_id = RunBmc::create(mm, run_c).await?;
+
+		let air1 = crate::model::AirForCreate {
+			run_id,
+			cost: Some(0.0125),
+			label: None,
+			model_ov: None,
+			model_upstream: None,
+			prompt_json: None,
+			answer_json: None,
+			usage_json: None,
+			token_in: None,
+			token_out: None,
+			token_reason: None,
+			token_cache_hit: None,
+			token_cache_write: None,
+			error: None,
+			end_state: None,
+			start: None,
+			ai_start: None,
+			ai_end: None,
+			end: None,
+		};
+		let air2 = crate::model::AirForCreate {
+			run_id,
+			cost: Some(0.0375),
+			..air1.clone()
+		};
+		crate::model::AirBmc::create_next(mm, run_id, air1).await?;
+		crate::model::AirBmc::create_next(mm, run_id, air2).await?;
+
+		// -- Exec
+		let total = RunBmc::recompute_total_cost(mm, run_id).await?;
+
+		// -- Check
+		assert!((total - 0.05).abs() < 1e-6);
+		let run = RunBmc::get(mm, run_id).await?;
+		let run_cost = run.total_cost.ok_or("should have total_cost")?;
+		assert!((run_cost - 0.05).abs() < 1e-6);
 
 		Ok(())
 	}

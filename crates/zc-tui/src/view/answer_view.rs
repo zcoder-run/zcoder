@@ -187,7 +187,7 @@ mod tests {
 		assert_eq!(lines[3].spans[0].content, "▌ ");
 		assert_eq!(
 			lines[3].spans[1].content,
-			"in: 1,030 tk – out: 4,023 tk (2,203 tk reas)"
+			"in: 1,030 tk  -  out: 4,023 tk (2,203 tk reas)"
 		);
 
 		// Line 4: Separator

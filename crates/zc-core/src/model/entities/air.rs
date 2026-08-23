@@ -191,6 +191,11 @@ impl AirBmc {
 	pub async fn list(mm: &ModelManager, list_options: Option<ListOptions>) -> Result<Vec<Air>> {
 		support::list::<Self, _>(mm, list_options, None).await
 	}
+
+	pub async fn list_for_run(mm: &ModelManager, run_id: Id) -> Result<Vec<Air>> {
+		let filter = vec![SqliteField::new("run_id", run_id)];
+		support::list::<Self, _>(mm, None, Some(filter.into())).await
+	}
 }
 
 // endregion: --- Bmc
@@ -353,6 +358,38 @@ mod tests {
 
 		// -- Check
 		assert!(list.len() >= 2);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_model_air_bmc_list_for_run() -> Result<()> {
+		// -- Setup & Fixtures
+		let mm = get_model_manager()?;
+		let run1_id = RunBmc::create(mm, RunForCreate {
+			prompt: Some("run 1".to_string()),
+			answer: None,
+		})
+		.await?;
+		let run2_id = RunBmc::create(mm, RunForCreate {
+			prompt: Some("run 2".to_string()),
+			answer: None,
+		})
+		.await?;
+
+		AirBmc::create_next(mm, run1_id, air_for_create(run1_id)).await?;
+		AirBmc::create_next(mm, run1_id, air_for_create(run1_id)).await?;
+		AirBmc::create_next(mm, run2_id, air_for_create(run2_id)).await?;
+
+		// -- Exec
+		let list1 = AirBmc::list_for_run(mm, run1_id).await?;
+		let list2 = AirBmc::list_for_run(mm, run2_id).await?;
+
+		// -- Check
+		assert_eq!(list1.len(), 2);
+		assert!(list1.iter().all(|a| a.run_id == run1_id));
+		assert_eq!(list2.len(), 1);
+		assert!(list2.iter().all(|a| a.run_id == run2_id));
 
 		Ok(())
 	}

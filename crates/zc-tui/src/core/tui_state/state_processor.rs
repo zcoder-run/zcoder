@@ -37,9 +37,12 @@ impl StateProcessor {
 		state: &mut TuiState,
 		model: Option<String>,
 		duration_us: Option<i64>,
+		cost: Option<f64>,
 		tokens: (Option<u32>, Option<u32>, Option<u32>),
 	) {
-		let mut info = AiWorkInfo::new(false).with_tokens(tokens.0, tokens.1, tokens.2);
+		let mut info = AiWorkInfo::new(false)
+			.with_cost(cost)
+			.with_tokens(tokens.0, tokens.1, tokens.2);
 		if let Some(m) = model {
 			info = info.with_model(m);
 		}
@@ -189,11 +192,13 @@ mod tests {
 			&mut state,
 			Some("claude-3-5-sonnet".to_string()),
 			Some(4_500_000),
+			Some(0.05),
 			(Some(120), Some(450), Some(80)),
 		);
 		let info = state.ai_work_info().ok_or("should have work info")?;
 		assert!(!info.is_running);
 		assert_eq!(info.duration.as_deref(), Some("4s 500ms"));
+		assert_eq!(info.cost, Some(0.05));
 		assert_eq!(info.input_tokens, Some(120));
 		assert_eq!(info.output_tokens, Some(450));
 		assert_eq!(info.reasoning_tokens, Some(80));

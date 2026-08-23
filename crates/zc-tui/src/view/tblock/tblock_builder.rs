@@ -22,6 +22,22 @@ pub fn format_count_commas(n: u32) -> String {
 	out
 }
 
+/// Formats a cost with up to 4 decimal places, keeping at least 2 decimal places.
+pub fn format_cost(cost: f64) -> String {
+	let s = format!("{cost:.4}");
+	let trimmed = s.trim_end_matches('0');
+	if let Some(dot_idx) = trimmed.find('.') {
+		let decimals = trimmed.len() - dot_idx - 1;
+		if decimals < 2 {
+			format!("${trimmed}{}", "0".repeat(2 - decimals))
+		} else {
+			format!("${trimmed}")
+		}
+	} else {
+		format!("${trimmed}.00")
+	}
+}
+
 /// Creates a styled indicator bar span for the given `TBlockKind`.
 pub fn bar_span(kind: TBlockKind) -> Span<'static> {
 	Span::styled(kind.bar_glyph(), kind.bar_style())
@@ -82,7 +98,7 @@ pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 	let mut lines = Vec::new();
 
 	let status_prefix = if info.is_running { "AI Running" } else { "AI Done" };
-	let mut line1_parts = vec![status_prefix.to_string()];
+	let mut line1_parts = vec![format!("{status_prefix:<10}")];
 
 	if let Some(ref model) = info.model
 		&& !model.is_empty()
@@ -96,23 +112,41 @@ pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 		line1_parts.push(dur.clone());
 	}
 
-	let line1_text = line1_parts.join(" – ");
+	let line1_text = line1_parts.join(" - ");
 	lines.push(Line::from(vec![
 		bar_span(TBlockKind::Work),
 		Span::styled(line1_text, STL_TBLOCK_WORK_MSG),
 	]));
 
-	if !info.is_running && (info.input_tokens.is_some() || info.output_tokens.is_some()) {
-		let in_str = info.input_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
-		let out_str = info.output_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
+	if !info.is_running && (info.cost.is_some() || info.input_tokens.is_some() || info.output_tokens.is_some()) {
+		let tok_str = if info.input_tokens.is_some() || info.output_tokens.is_some() {
+			let in_str = info.input_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
+			let out_str = info.output_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
 
-		let mut line2_text = format!("in: {in_str} tk – out: {out_str} tk");
-		if let Some(reas) = info.reasoning_tokens
-			&& reas > 0
-		{
-			let reas_str = format_count_commas(reas);
-			line2_text.push_str(&format!(" ({reas_str} tk reas)"));
-		}
+			let mut tok = format!("in: {in_str} tk | out: {out_str} tk");
+			if let Some(reas) = info.reasoning_tokens
+				&& reas > 0
+			{
+				let reas_str = format_count_commas(reas);
+				tok.push_str(&format!(" ({reas_str} tk reas)"));
+			}
+			Some(tok)
+		} else {
+			None
+		};
+
+		let line2_text = if let Some(cost) = info.cost {
+			let cost_formatted = format_cost(cost);
+			if let Some(tok) = tok_str {
+				format!("{cost_formatted:<10} - {tok}")
+			} else {
+				cost_formatted
+			}
+		} else if let Some(tok) = tok_str {
+			tok
+		} else {
+			String::new()
+		};
 
 		lines.push(Line::from(vec![
 			bar_span(TBlockKind::Work),
@@ -386,6 +420,19 @@ mod tests {
 	}
 
 	#[test]
+	fn test_format_cost() -> Result<()> {
+		assert_eq!(format_cost(0.0012), "$0.0012");
+		assert_eq!(format_cost(0.00642), "$0.0064");
+		assert_eq!(format_cost(0.23), "$0.23");
+		assert_eq!(format_cost(0.2), "$0.20");
+		assert_eq!(format_cost(0.0), "$0.00");
+		assert_eq!(format_cost(1.0), "$1.00");
+		assert_eq!(format_cost(0.12345), "$0.1235");
+
+		Ok(())
+	}
+
+	#[test]
 	fn test_tblock_builder_ai_work_running() -> Result<()> {
 		// -- Setup & Fixtures
 		let info = AiWorkInfo::new(true).with_model("gemini-flash-4.7").with_duration("5s 194ms");
@@ -398,7 +445,7 @@ mod tests {
 		assert_eq!(lines[0].spans.len(), 2);
 		assert_eq!(lines[0].spans[0].content, "▌ ");
 		assert_eq!(lines[0].spans[0].style, STL_BAR_WORK);
-		assert_eq!(lines[0].spans[1].content, "AI Running – gemini-flash-4.7 – 5s 194ms");
+		assert_eq!(lines[0].spans[1].content, "AI Running - gemini-flash-4.7 - 5s 194ms");
 		assert_eq!(lines[0].spans[1].style, STL_TBLOCK_WORK_MSG);
 
 		Ok(())
@@ -410,6 +457,7 @@ mod tests {
 		let info = AiWorkInfo::new(false)
 			.with_model("gemini-flash-4.7")
 			.with_duration("1m 43s")
+			.with_cost(Some(0.12))
 			.with_tokens(Some(1030), Some(4023), Some(2203));
 
 		// -- Exec
@@ -419,14 +467,14 @@ mod tests {
 		assert_eq!(lines.len(), 2);
 		assert_eq!(lines[0].spans[0].content, "▌ ");
 		assert_eq!(lines[0].spans[0].style, STL_BAR_WORK);
-		assert_eq!(lines[0].spans[1].content, "AI Done – gemini-flash-4.7 – 1m 43s");
+		assert_eq!(lines[0].spans[1].content, "AI Done    - gemini-flash-4.7 - 1m 43s");
 		assert_eq!(lines[0].spans[1].style, STL_TBLOCK_WORK_MSG);
 
 		assert_eq!(lines[1].spans[0].content, "▌ ");
 		assert_eq!(lines[1].spans[0].style, STL_BAR_WORK);
 		assert_eq!(
 			lines[1].spans[1].content,
-			"in: 1,030 tk – out: 4,023 tk (2,203 tk reas)"
+			"$0.12      - in: 1,030 tk | out: 4,023 tk (2,203 tk reas)"
 		);
 		assert_eq!(lines[1].spans[1].style, STL_TBLOCK_WORK_DETAIL);
 
@@ -447,7 +495,25 @@ mod tests {
 
 		// -- Check
 		assert_eq!(lines.len(), 2);
-		assert_eq!(lines[1].spans[1].content, "in: 500 tk – out: 120 tk");
+		assert_eq!(lines[1].spans[1].content, "in: 500 tk | out: 120 tk");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_tblock_builder_ai_work_done_cost_only() -> Result<()> {
+		// -- Setup & Fixtures
+		let info = AiWorkInfo::new(false)
+			.with_model("claude-3-5-sonnet")
+			.with_duration("3s")
+			.with_cost(Some(0.05));
+
+		// -- Exec
+		let lines = build_ai_work_block(&info);
+
+		// -- Check
+		assert_eq!(lines.len(), 2);
+		assert_eq!(lines[1].spans[1].content, "$0.05");
 
 		Ok(())
 	}
@@ -462,7 +528,7 @@ mod tests {
 
 		// -- Check
 		assert_eq!(lines.len(), 1);
-		assert_eq!(lines[0].spans[1].content, "AI Done – claude-3-5-sonnet – 3s");
+		assert_eq!(lines[0].spans[1].content, "AI Done    - claude-3-5-sonnet - 3s");
 
 		Ok(())
 	}
