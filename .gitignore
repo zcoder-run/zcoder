@@ -7,6 +7,8 @@
 _*
 !**/src/**/_*/
 !**/src/**/_*
+!**/crates/**/_*/
+!**/crates/**/_*
 
 # -- AIPack
 # Ignore all .aipack files
