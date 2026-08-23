@@ -1,5 +1,8 @@
-use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result};
-use crate::model::{ModelManager, RunBmc, RunForCreate, RunForUpdate};
+use crate::exec::{
+	Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result,
+	prep_air_for_create, prep_air_for_error, prep_air_for_success,
+};
+use crate::model::{AirBmc, EpochUs, ModelManager, RunBmc, RunForCreate, RunForUpdate};
 use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
 use zc_common::event_base::new_mpsc_bounded;
@@ -96,7 +99,7 @@ impl Executor {
 }
 
 impl ExecutorInner {
-	async fn handle_run_prompt(&self, mm: &ModelManager, prompt: String) -> Result<()> {
+	async fn handle_run_prompt(&self, mm: &'static ModelManager, prompt: String) -> Result<()> {
 		// -- Create in the DB
 		let run_c = RunForCreate {
 			prompt: Some(prompt.clone()),
@@ -122,8 +125,28 @@ impl ExecutorInner {
 			// -- Build Prompt / Context
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
+			// -- Create Air record
+			let start = EpochUs::now();
+			let air_c = prep_air_for_create(run_id, Some(model), &chat_req, start, None);
+			let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
+
 			// -- Execute Request
-			let res = genai_client.exec_chat(model, chat_req, None).await?;
+			let ai_start = EpochUs::now();
+			let res = match genai_client.exec_chat(model, chat_req, None).await {
+				Ok(res) => {
+					let ai_end = EpochUs::now();
+					let end = ai_end;
+					let air_u = prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
+					let _ = AirBmc::update(mm, air_id, air_u).await;
+					res
+				}
+				Err(err) => {
+					let ai_end = EpochUs::now();
+					let air_u = prep_air_for_error(err.to_string(), ai_end);
+					let _ = AirBmc::update(mm, air_id, air_u).await;
+					return Err(err.into());
+				}
+			};
 
 			let ai_response = res
 				.content

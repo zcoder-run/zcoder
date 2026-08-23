@@ -356,6 +356,153 @@ mod tests {
 
 		Ok(())
 	}
+
+	#[tokio::test]
+	async fn test_model_air_bmc_model_event_on_create_and_update() -> Result<()> {
+		// -- Setup & Fixtures
+		let mm = get_model_manager()?;
+		let mut bus_rx = get_model_bus().subscribe();
+
+		let run_c = RunForCreate {
+			prompt: Some("event test prompt".to_string()),
+			answer: None,
+		};
+		let run_id = RunBmc::create(mm, run_c).await?;
+
+		// -- Exec: Create Air
+		let air_c = air_for_create(run_id);
+		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
+
+		// -- Check: Create Event
+		let event = loop {
+			let evt = bus_rx.recv().await?;
+			if evt.entity == EntityType::Aixc && evt.id == Some(air_id) {
+				break evt;
+			}
+		};
+		assert_eq!(event.entity, EntityType::Aixc);
+		assert_eq!(event.action, EntityAction::Created);
+		assert_eq!(event.id, Some(air_id));
+		assert_eq!(event.rel_ids.run_id, Some(run_id));
+
+		// -- Exec: Update Air
+		let update = AirForUpdate {
+			end_state: Some(AirEndState::Success.to_string()),
+			..Default::default()
+		};
+		let _ = AirBmc::update(mm, air_id, update).await?;
+
+		// -- Check: Update Event
+		let event = loop {
+			let evt = bus_rx.recv().await?;
+			if evt.entity == EntityType::Aixc && evt.id == Some(air_id) && evt.action == EntityAction::Updated {
+				break evt;
+			}
+		};
+		assert_eq!(event.entity, EntityType::Aixc);
+		assert_eq!(event.action, EntityAction::Updated);
+		assert_eq!(event.id, Some(air_id));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_model_air_bmc_full_lifecycle_and_metrics() -> Result<()> {
+		// -- Setup & Fixtures
+		let mm = get_model_manager()?;
+		let run_c = RunForCreate {
+			prompt: Some("full lifecycle test".to_string()),
+			answer: None,
+		};
+		let run_id = RunBmc::create(mm, run_c).await?;
+
+		// -- Exec: Prep & Create Air
+		let start = EpochUs::now();
+		let chat_req = genai::chat::ChatRequest::from_messages(vec![
+			genai::chat::ChatMessage::user("count to three"),
+		]);
+		let air_c = crate::exec::prep_air_for_create(
+			run_id,
+			Some("test-model"),
+			&chat_req,
+			start,
+			Some("step-label"),
+		);
+		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
+
+		// -- Check: Initial Air State
+		let air = AirBmc::get(mm, air_id).await?;
+		assert_eq!(air.run_id, run_id);
+		assert_eq!(air.idx, 1);
+		assert_eq!(air.model_ov.as_deref(), Some("test-model"));
+		assert_eq!(air.label.as_deref(), Some("step-label"));
+		assert_eq!(air.start, Some(start));
+		assert!(air.prompt_json.ok_or("should have prompt_json")?.contains("count to three"));
+
+		// -- Exec: Update with Success
+		let model_iden = genai::ModelIden::from((genai::adapter::AdapterKind::OpenAI, "gpt-4o-mini"));
+		let usage = genai::chat::Usage {
+			prompt_tokens: Some(15),
+			completion_tokens: Some(25),
+			total_tokens: Some(40),
+			prompt_tokens_details: Some(genai::chat::PromptTokensDetails {
+				cached_tokens: Some(5),
+				audio_tokens: None,
+				cache_creation_tokens: None,
+				cache_creation_details: None,
+			}),
+			completion_tokens_details: Some(genai::chat::CompletionTokensDetails {
+				reasoning_tokens: Some(7),
+				accepted_prediction_tokens: None,
+				rejected_prediction_tokens: None,
+				audio_tokens: None,
+			}),
+		};
+		let res = genai::chat::ChatResponse {
+			content: genai::chat::MessageContent::from("one two three"),
+			reasoning_content: None,
+			usage,
+			model_iden: model_iden.clone(),
+			provider_model_iden: model_iden,
+			stop_reason: None,
+			captured_raw_body: None,
+			response_id: None,
+		};
+		let ai_start = EpochUs::now();
+		let ai_end = EpochUs::now();
+		let end = EpochUs::now();
+
+		let update = crate::exec::prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
+		AirBmc::update(mm, air_id, update).await?;
+
+		// -- Check: Updated Air State
+		let air = AirBmc::get(mm, air_id).await?;
+		assert_eq!(air.model_upstream.as_deref(), Some("gpt-4o-mini"));
+		assert_eq!(air.token_in, Some(15));
+		assert_eq!(air.token_out, Some(25));
+		assert_eq!(air.token_reason, Some(7));
+		assert_eq!(air.token_cache_hit, Some(5));
+		assert_eq!(air.end_state.as_deref(), Some("success"));
+		assert_eq!(air.ai_start, Some(ai_start));
+		assert_eq!(air.ai_end, Some(ai_end));
+		assert_eq!(air.end, Some(end));
+		assert!(air.answer_json.ok_or("should have answer_json")?.contains("one two three"));
+
+		// -- Exec & Check: Error Case
+		let air_err_c = air_for_create(run_id);
+		let err_air_id = AirBmc::create_next(mm, run_id, air_err_c).await?;
+		let err_end = EpochUs::now();
+		let err_update = crate::exec::prep_air_for_error("connection refused", err_end);
+		AirBmc::update(mm, err_air_id, err_update).await?;
+
+		let err_air = AirBmc::get(mm, err_air_id).await?;
+		assert_eq!(err_air.idx, 2);
+		assert_eq!(err_air.error.as_deref(), Some("connection refused"));
+		assert_eq!(err_air.end_state.as_deref(), Some("error"));
+		assert_eq!(err_air.end, Some(err_end));
+
+		Ok(())
+	}
 }
 
 // endregion: --- Tests

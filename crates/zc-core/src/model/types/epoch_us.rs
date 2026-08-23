@@ -6,6 +6,13 @@ use macro_rules_attribute as mra;
 pub struct EpochUs(i64);
 
 impl EpochUs {
+	pub fn now() -> Self {
+		let duration = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap_or_default();
+		EpochUs(duration.as_micros() as i64)
+	}
+
 	pub fn as_i64(&self) -> i64 {
 		self.0
 	}
