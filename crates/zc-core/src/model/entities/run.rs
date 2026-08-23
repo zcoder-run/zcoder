@@ -16,6 +16,8 @@ pub struct Run {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 	pub error: Option<String>,
+	pub end: Option<EpochUs>,
+	pub end_state: Option<String>,
 	pub air_idx_seq: i64,
 }
 
@@ -30,6 +32,19 @@ pub struct RunForUpdate {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 	pub error: Option<String>,
+	pub end: Option<EpochUs>,
+	pub end_state: Option<String>,
+}
+
+/// End state for a Run execution.
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub enum RunEndState {
+	#[display("success")]
+	Success,
+	#[display("error")]
+	Error,
+	#[display("cancelled")]
+	Cancelled,
 }
 
 // endregion: --- Types
@@ -91,6 +106,36 @@ mod tests {
 		// -- Check
 		let run = RunBmc::get(mm, id).await?;
 		assert_eq!(run.prompt.as_deref(), Some("Why is shy red?"));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_model_run_bmc_update_end_state() -> Result<()> {
+		// -- Setup & Fixtures
+		let mm = get_model_manager()?;
+		let run_c = RunForCreate {
+			prompt: Some("compute task".to_string()),
+			answer: None,
+		};
+		let id = RunBmc::create(mm, run_c).await?;
+
+		// -- Exec
+		let end_time = EpochUs::now();
+		let run_u = RunForUpdate {
+			answer: Some("task finished".to_string()),
+			end: Some(end_time),
+			end_state: Some(RunEndState::Success.to_string()),
+			..Default::default()
+		};
+		let count = RunBmc::update(mm, id, run_u).await?;
+
+		// -- Check
+		assert_eq!(count, 1);
+		let run = RunBmc::get(mm, id).await?;
+		assert_eq!(run.answer.as_deref(), Some("task finished"));
+		assert_eq!(run.end, Some(end_time));
+		assert_eq!(run.end_state.as_deref(), Some("success"));
 
 		Ok(())
 	}

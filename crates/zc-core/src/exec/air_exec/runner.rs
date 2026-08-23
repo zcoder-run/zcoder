@@ -1,23 +1,48 @@
 // region:    --- Modules
 
-use crate::model::{AirEndState, AirForCreate, AirForUpdate, EpochUs, Id};
-use genai::chat::{ChatRequest, ChatResponse, Usage};
-
-// endregion: --- Modules
-
-// region:    --- Types
-
-struct ExtractedUsage {
-	token_in: Option<i64>,
-	token_out: Option<i64>,
-	token_reason: Option<i64>,
-	token_cache_hit: Option<i64>,
-	token_cache_write: Option<i64>,
-}
+use crate::exec::Result;
+use crate::exec::air_exec::usage::{ExtractedUsage, extract_usage_metrics};
+use crate::model::{
+	AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager,
+};
+use genai::chat::{ChatRequest, ChatResponse};
 
 // endregion: --- Modules
 
 // region:    --- Public Functions
+
+/// Executes an AI chat request, automatically recording creation, timing, and update on the Air model entity.
+pub async fn exec_air_chat(
+	mm: &'static ModelManager,
+	client: &genai::Client,
+	model: &str,
+	chat_req: ChatRequest,
+	run_id: Id,
+	label: Option<&str>,
+) -> Result<(ChatResponse, Id)> {
+	let start = EpochUs::now();
+	let air_c = prep_air_for_create(run_id, Some(model), &chat_req, start, label);
+	let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
+
+	let ai_start = EpochUs::now();
+	let chat_res = match client.exec_chat(model, chat_req, None).await {
+		Ok(res) => {
+			let ai_end = EpochUs::now();
+			let end = ai_end;
+			let air_u = prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
+			let _ = AirBmc::update(mm, air_id, air_u).await;
+			res
+		}
+		Err(err) => {
+			let ai_end = EpochUs::now();
+			let air_u = prep_air_for_error(err.to_string(), ai_end);
+			let _ = AirBmc::update(mm, air_id, air_u).await;
+			return Err(err.into());
+		}
+	};
+
+	Ok((chat_res, air_id))
+}
 
 /// Prepares an `AirForCreate` struct with request payloads and initial timestamps.
 pub fn prep_air_for_create(
@@ -100,38 +125,6 @@ pub fn prep_air_for_error(err_msg: impl Into<String>, end: EpochUs) -> AirForUpd
 
 // endregion: --- Public Functions
 
-// region:    --- Support
-
-/// Extracts token metrics from a `genai::chat::Usage` object.
-fn extract_usage_metrics(usage: &Usage) -> ExtractedUsage {
-	let token_in = usage.prompt_tokens.map(i64::from);
-	let token_out = usage.completion_tokens.map(i64::from);
-
-	let token_reason = usage
-		.completion_tokens_details
-		.as_ref()
-		.and_then(|d| d.reasoning_tokens)
-		.map(i64::from);
-
-	let token_cache_hit = usage
-		.prompt_tokens_details
-		.as_ref()
-		.and_then(|d| d.cached_tokens)
-		.map(i64::from);
-
-	let token_cache_write = None;
-
-	ExtractedUsage {
-		token_in,
-		token_out,
-		token_reason,
-		token_cache_hit,
-		token_cache_write,
-	}
-}
-
-// endregion: --- Support
-
 // region:    --- Tests
 
 #[cfg(test)]
@@ -139,8 +132,8 @@ mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 	use super::*;
-	use genai::adapter::AdapterKind;
 	use genai::ModelIden;
+	use genai::adapter::AdapterKind;
 	use genai::chat::{
 		ChatMessage, ChatResponse, CompletionTokensDetails, MessageContent, PromptTokensDetails,
 		Usage,
@@ -148,13 +141,16 @@ mod tests {
 	use uuid::Uuid;
 
 	#[test]
-	fn test_prep_air_for_create() -> Result<()> {
+	fn test_air_exec_prep_air_for_create() -> Result<()> {
+		// -- Setup & Fixtures
 		let run_id = Id::from(Uuid::new_v4());
 		let req = ChatRequest::from_messages(vec![ChatMessage::user("hello")]);
 		let now = EpochUs::now();
 
+		// -- Exec
 		let air_c = prep_air_for_create(run_id, Some("model-a"), &req, now, Some("step-1"));
 
+		// -- Check
 		assert_eq!(air_c.run_id, run_id);
 		assert_eq!(air_c.model_ov.as_deref(), Some("model-a"));
 		assert_eq!(air_c.label.as_deref(), Some("step-1"));
@@ -166,7 +162,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_prep_air_for_success() -> Result<()> {
+	fn test_air_exec_prep_air_for_success() -> Result<()> {
+		// -- Setup & Fixtures
 		let usage = Usage {
 			prompt_tokens: Some(10),
 			completion_tokens: Some(20),
@@ -201,8 +198,11 @@ mod tests {
 		let ai_start = EpochUs::now();
 		let ai_end = EpochUs::now();
 		let end = EpochUs::now();
+
+		// -- Exec
 		let update = prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
 
+		// -- Check
 		assert_eq!(update.model_upstream.as_deref(), Some("gpt-4o"));
 		assert_eq!(update.token_in, Some(10));
 		assert_eq!(update.token_out, Some(20));
@@ -220,10 +220,14 @@ mod tests {
 	}
 
 	#[test]
-	fn test_prep_air_for_error() -> Result<()> {
+	fn test_air_exec_prep_air_for_error() -> Result<()> {
+		// -- Setup & Fixtures
 		let end = EpochUs::now();
+
+		// -- Exec
 		let update = prep_air_for_error("failed to connect", end);
 
+		// -- Check
 		assert_eq!(update.error.as_deref(), Some("failed to connect"));
 		assert_eq!(update.end_state.as_deref(), Some("error"));
 		assert_eq!(update.end, Some(end));

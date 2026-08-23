@@ -31,13 +31,16 @@ CREATE TABLE IF NOT EXISTS run (
 		ctime  INTEGER NOT NULL,
 		mtime  INTEGER NOT NULL,
 
+		end         INTEGER,
+		end_state   TEXT,
+
 		model       TEXT,
 		air_idx_seq INTEGER NOT NULL DEFAULT 0
 ) STRICT, WITHOUT ROWID",
 );
 
 const AIR_TABLE: (&str, &str) = (
-	"air",
+	"aixc",
 	"
 CREATE TABLE IF NOT EXISTS aixc (
 		id          BLOB PRIMARY KEY,

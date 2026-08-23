@@ -1,8 +1,7 @@
 use crate::exec::{
-	Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result,
-	prep_air_for_create, prep_air_for_error, prep_air_for_success,
+	Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result, exec_air_chat,
 };
-use crate::model::{AirBmc, EpochUs, ModelManager, RunBmc, RunForCreate, RunForUpdate};
+use crate::model::{EpochUs, ModelManager, RunBmc, RunEndState, RunForCreate, RunForUpdate};
 use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
 use zc_common::event_base::new_mpsc_bounded;
@@ -125,28 +124,8 @@ impl ExecutorInner {
 			// -- Build Prompt / Context
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
-			// -- Create Air record
-			let start = EpochUs::now();
-			let air_c = prep_air_for_create(run_id, Some(model), &chat_req, start, None);
-			let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
-
-			// -- Execute Request
-			let ai_start = EpochUs::now();
-			let res = match genai_client.exec_chat(model, chat_req, None).await {
-				Ok(res) => {
-					let ai_end = EpochUs::now();
-					let end = ai_end;
-					let air_u = prep_air_for_success(&res, Some(ai_start), Some(ai_end), Some(end));
-					let _ = AirBmc::update(mm, air_id, air_u).await;
-					res
-				}
-				Err(err) => {
-					let ai_end = EpochUs::now();
-					let air_u = prep_air_for_error(err.to_string(), ai_end);
-					let _ = AirBmc::update(mm, air_id, air_u).await;
-					return Err(err.into());
-				}
-			};
+			// -- Execute Air Request
+			let (res, _air_id) = exec_air_chat(mm, &genai_client, model, chat_req, run_id, None).await?;
 
 			let ai_response = res
 				.content
@@ -204,11 +183,14 @@ impl ExecutorInner {
 			}
 
 			// -- Store response
+			let end_time = EpochUs::now();
 			RunBmc::update(
 				mm,
 				run_id,
 				RunForUpdate {
 					answer: Some(answer.clone()),
+					end: Some(end_time),
+					end_state: Some(RunEndState::Success.to_string()),
 					..Default::default()
 				},
 			)
@@ -223,11 +205,14 @@ impl ExecutorInner {
 
 		// -- Handle error using your TODO pattern
 		if let Err(err) = block_result {
+			let end_time = EpochUs::now();
 			RunBmc::update(
 				mm,
 				run_id,
 				RunForUpdate {
 					error: Some(err.to_string()),
+					end: Some(end_time),
+					end_state: Some(RunEndState::Error.to_string()),
 					..Default::default()
 				},
 			)
