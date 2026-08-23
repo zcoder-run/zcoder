@@ -1,7 +1,14 @@
 [package]
 name = "zc-asset"
 version = "0.0.2-WIP"
+description = "Embedded assets for zcoder"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+categories = ["development-tools"]
+keywords = ["coding-harness", "coding-ai"]
+authors = ["Jeremy Chone"]
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
 
 [lib]
 doctest = false

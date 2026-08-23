@@ -1,7 +1,14 @@
 [package]
 name = "zc-core"
 version = "0.0.2-WIP"
+description = "Core AI coding functionality for zcoder"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+categories = ["development-tools"]
+keywords = ["coding-harness", "coding-ai"]
+authors = ["Jeremy Chone"]
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
 
 [lints.rust]
 unsafe_code = "forbid"

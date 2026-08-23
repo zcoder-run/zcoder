@@ -1,7 +1,14 @@
 [package]
 name = "zc-tui"
 version = "0.0.2-WIP"
+description = "Terminal user interface for zcoder"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["coding-harness", "coding-ai", "tui"]
+authors = ["Jeremy Chone"]
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
 
 [dependencies]
 # -- Sub Crates
