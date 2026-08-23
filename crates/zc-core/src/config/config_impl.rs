@@ -1,6 +1,7 @@
 use crate::config::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use simple_fs::SPath;
+use std::collections::{BTreeMap, HashSet};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -20,33 +21,15 @@ impl Deref for Config {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "ConfigToml", into = "ConfigToml")]
 pub struct ConfigInner {
-	#[serde(default)]
-	pub maestro: MaestroConfig,
+	pub maestro_model: Option<String>,
 
-	#[serde(default)]
-	pub model_sizes: HashMap<String, String>,
+	pub workspace_working_dir: Option<SPath>,
 
-	#[serde(default)]
-	pub model_aliases: HashMap<String, String>,
-}
+	pub model_sizes: Option<BTreeMap<String, String>>,
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaestroConfig {
-	#[serde(default = "default_maestro_model")]
-	pub model: String,
-}
-
-fn default_maestro_model() -> String {
-	"$small".to_string()
-}
-
-impl Default for MaestroConfig {
-	fn default() -> Self {
-		Self {
-			model: default_maestro_model(),
-		}
-	}
+	pub model_aliases: Option<BTreeMap<String, String>>,
 }
 
 // endregion: --- Types
@@ -57,6 +40,63 @@ impl Config {
 	pub fn from_toml_str(toml_str: &str) -> Result<Self> {
 		let inner = ConfigInner::from_toml_str(toml_str)?;
 		Ok(Self(Arc::new(inner)))
+	}
+
+	pub fn with_maestro_model(mut self, model: impl Into<String>) -> Self {
+		Arc::make_mut(&mut self.0).maestro_model = Some(model.into());
+		self
+	}
+
+	pub fn with_workspace_working_dir(mut self, dir: impl Into<SPath>) -> Self {
+		Arc::make_mut(&mut self.0).workspace_working_dir = Some(dir.into());
+		self
+	}
+
+	pub fn with_model_aliases(mut self, aliases: BTreeMap<String, String>) -> Self {
+		Arc::make_mut(&mut self.0).model_aliases = Some(aliases);
+		self
+	}
+
+	pub fn with_model_sizes(mut self, sizes: BTreeMap<String, String>) -> Self {
+		Arc::make_mut(&mut self.0).model_sizes = Some(sizes);
+		self
+	}
+
+	pub fn append_model_alias(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+		Arc::make_mut(&mut self.0)
+			.model_aliases
+			.get_or_insert_with(BTreeMap::new)
+			.insert(key.into(), value.into());
+		self
+	}
+
+	pub fn append_model_size(mut self, size: impl Into<String>, target: impl Into<String>) -> Self {
+		Arc::make_mut(&mut self.0)
+			.model_sizes
+			.get_or_insert_with(BTreeMap::new)
+			.insert(size.into(), target.into());
+		self
+	}
+
+	pub fn maestro_model(&self) -> &str {
+		self.0.maestro_model()
+	}
+
+	pub fn workspace_working_dir(&self) -> Option<&SPath> {
+		self.0.workspace_working_dir()
+	}
+
+	pub fn model_sizes(&self) -> Option<&BTreeMap<String, String>> {
+		self.0.model_sizes.as_ref()
+	}
+
+	pub fn model_aliases(&self) -> Option<&BTreeMap<String, String>> {
+		self.0.model_aliases.as_ref()
+	}
+
+	pub fn merge(mut self, over: Config) -> Self {
+		Arc::make_mut(&mut self.0).merge_with((*over.0).clone());
+		self
 	}
 
 	pub fn get_model(&self, ref_name: &str) -> Result<String> {
@@ -74,6 +114,34 @@ impl ConfigInner {
 		Ok(inner)
 	}
 
+	pub fn maestro_model(&self) -> &str {
+		match self.maestro_model.as_deref() {
+			Some(m) if !m.is_empty() => m,
+			_ => "$small",
+		}
+	}
+
+	pub fn workspace_working_dir(&self) -> Option<&SPath> {
+		self.workspace_working_dir.as_ref()
+	}
+
+	pub fn merge_with(&mut self, over: ConfigInner) {
+		if over.maestro_model.is_some() {
+			self.maestro_model = over.maestro_model;
+		}
+		if over.workspace_working_dir.is_some() {
+			self.workspace_working_dir = over.workspace_working_dir;
+		}
+		if let Some(over_sizes) = over.model_sizes {
+			let sizes = self.model_sizes.get_or_insert_with(BTreeMap::new);
+			sizes.extend(over_sizes);
+		}
+		if let Some(over_aliases) = over.model_aliases {
+			let aliases = self.model_aliases.get_or_insert_with(BTreeMap::new);
+			aliases.extend(over_aliases);
+		}
+	}
+
 	pub fn get_model(&self, ref_name: &str) -> Result<String> {
 		let trimmed = ref_name.trim();
 		if trimmed.is_empty() {
@@ -83,7 +151,8 @@ impl ConfigInner {
 		// 1. Check size preset if starts with '$'
 		let target = if let Some(size_key) = trimmed.strip_prefix('$') {
 			self.model_sizes
-				.get(size_key)
+				.as_ref()
+				.and_then(|sizes| sizes.get(size_key))
 				.map(|s| s.as_str())
 				.ok_or_else(|| Error::ModelSizeNotFound(trimmed.to_string()))?
 		} else {
@@ -96,7 +165,7 @@ impl ConfigInner {
 		visited.insert(current);
 
 		for _ in 0..MAX_ALIAS_DEPTH {
-			if let Some(aliased) = self.model_aliases.get(current) {
+			if let Some(aliased) = self.model_aliases.as_ref().and_then(|aliases| aliases.get(current)) {
 				let next = aliased.as_str();
 				if visited.contains(next) {
 					return Err(Error::ModelAliasCycle(format!(
@@ -132,7 +201,68 @@ impl From<ConfigInner> for Config {
 	}
 }
 
+impl From<ConfigToml> for ConfigInner {
+	fn from(toml: ConfigToml) -> Self {
+		let workspace_working_dir = toml.workspace.and_then(|w| w.working_dir).map(SPath::from);
+		let maestro_model = toml.maestro.and_then(|m| m.model);
+		Self {
+			maestro_model,
+			workspace_working_dir,
+			model_sizes: toml.model_sizes,
+			model_aliases: toml.model_aliases,
+		}
+	}
+}
+
+impl From<ConfigInner> for ConfigToml {
+	fn from(inner: ConfigInner) -> Self {
+		let workspace = inner.workspace_working_dir.map(|p| WorkspaceToml {
+			working_dir: Some(p.as_str().to_string()),
+		});
+		let maestro = inner.maestro_model.map(|m| MaestroToml {
+			model: Some(m),
+		});
+		Self {
+			workspace,
+			maestro,
+			model_sizes: inner.model_sizes,
+			model_aliases: inner.model_aliases,
+		}
+	}
+}
+
 // endregion: --- Froms
+
+// region:    --- Support
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ConfigToml {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	workspace: Option<WorkspaceToml>,
+
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	maestro: Option<MaestroToml>,
+
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	model_sizes: Option<BTreeMap<String, String>>,
+
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	model_aliases: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkspaceToml {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	working_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MaestroToml {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	model: Option<String>,
+}
+
+// endregion: --- Support
 
 // region:    --- Tests
 
@@ -169,9 +299,75 @@ loop_b  = "loop_a"
 		let config = Config::from_toml_str("")?;
 
 		// -- Check
-		assert_eq!(config.maestro.model, "$small");
-		assert!(config.model_sizes.is_empty());
-		assert!(config.model_aliases.is_empty());
+		assert_eq!(config.maestro_model(), "$small");
+		assert!(config.workspace_working_dir().is_none());
+		assert!(config.model_sizes.is_none());
+		assert!(config.model_aliases.is_none());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_fluid_builders() -> Result<()> {
+		// -- Exec
+		let config = Config::default()
+			.with_maestro_model("custom-model")
+			.with_workspace_working_dir("./sub-crate")
+			.append_model_size("small", "fast-one")
+			.append_model_alias("fast-one", "gpt-4o-mini");
+
+		// -- Check
+		assert_eq!(config.maestro_model(), "custom-model");
+		assert_eq!(
+			config.workspace_working_dir().map(|p| p.as_str()),
+			Some("./sub-crate")
+		);
+		let resolved = config.get_model("$small")?;
+		assert_eq!(resolved, "gpt-4o-mini");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_merge() -> Result<()> {
+		// -- Setup & Fixtures
+		let base = Config::from_toml_str(
+			r#"
+[maestro]
+model = "$small"
+
+[model_sizes]
+small = "lite"
+"#,
+		)?;
+
+		let over = Config::from_toml_str(
+			r#"
+[workspace]
+working_dir = "crates/zc-core"
+
+[model_sizes]
+medium = "flash"
+"#,
+		)?;
+
+		// -- Exec
+		let merged = base.merge(over);
+
+		// -- Check
+		assert_eq!(merged.maestro_model(), "$small");
+		assert_eq!(
+			merged.workspace_working_dir().map(|p| p.as_str()),
+			Some("crates/zc-core")
+		);
+		assert_eq!(
+			merged.model_sizes().unwrap().get("small").map(|s| s.as_str()),
+			Some("lite")
+		);
+		assert_eq!(
+			merged.model_sizes().unwrap().get("medium").map(|s| s.as_str()),
+			Some("flash")
+		);
 
 		Ok(())
 	}

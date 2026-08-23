@@ -1,5 +1,5 @@
 [workspace]
-base_dir = "./"   # When relative, relative to cwd of the project_dir
+working_dir = "./"   # When relative, relative to cwd of the project_dir
 
 [maestro]
 

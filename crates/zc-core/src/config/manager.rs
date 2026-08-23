@@ -99,7 +99,7 @@ mod tests {
 		let config = manager.get_config();
 
 		// -- Check
-		assert_eq!(config.maestro.model, "$small");
+		assert_eq!(config.maestro_model(), "$small");
 		assert!(!manager.refresh_if_modified()?);
 
 		Ok(())

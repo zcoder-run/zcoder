@@ -37,13 +37,13 @@ async fn main() -> Result<()> {
 
 	// -- Cmd parsing & Setup
 	let cli_cmd = CliCmd::parse();
-	let project_dir = simple_fs::current_dir()?;
-	let base_dir = cli_cmd.dir.unwrap_or_else(|| ".demo-dir/".to_string());
+	let wspace_dir = simple_fs::current_dir()?;
 
 	// -- Executor setup
-	let executor_config = ExecutorConfig::default()
-		.with_project_dir(project_dir)
-		.with_base_dir(base_dir);
+	let mut executor_config = ExecutorConfig::default().with_wspace_dir(wspace_dir);
+	if let Some(dir) = cli_cmd.dir {
+		executor_config = executor_config.with_base_dir(dir);
+	}
 	let (executor, executor_tx, status_rx) = Executor::new(executor_config)?;
 
 	tokio::spawn(async move { executor.start().await });

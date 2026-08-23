@@ -148,7 +148,15 @@ mod tests {
 
 		// Line 2: Work running block
 		assert_eq!(lines[2].spans[0].content, "▌ ");
-		assert_eq!(lines[2].spans[1].content, "AI Running – gemini-flash-4.7 – 2s 350ms");
+		assert_eq!(lines[2].spans[1].content, "AI ");
+		assert_eq!(lines[2].spans[2].content, "▶");
+		assert_eq!(lines[2].spans[3].content, "▶");
+		assert_eq!(lines[2].spans[4].content, "▶");
+		assert_eq!(lines[2].spans[5].content, "▶");
+		assert_eq!(lines[2].spans[6].content, " - ");
+		let line2_text: String = lines[2].spans.iter().map(|s| s.content.as_ref()).collect();
+		assert!(line2_text.contains("gemini-flash-4.7"));
+		assert!(line2_text.contains("2s 350ms"));
 
 		assert_eq!(lines.len(), 3);
 
@@ -181,14 +189,17 @@ mod tests {
 
 		// Line 2: Work done line 1
 		assert_eq!(lines[2].spans[0].content, "▌ ");
-		assert_eq!(lines[2].spans[1].content, "AI Done – gemini-flash-4.7 – 1m 43s");
+		assert_eq!(lines[2].spans[1].content, "AI Done");
+		let line2_text: String = lines[2].spans.iter().map(|s| s.content.as_ref()).collect();
+		assert!(line2_text.contains("gemini-flash-4.7"));
+		assert!(line2_text.contains("1m 43s"));
 
 		// Line 3: Work done line 2 (tokens)
 		assert_eq!(lines[3].spans[0].content, "▌ ");
-		assert_eq!(
-			lines[3].spans[1].content,
-			"in: 1,030 tk  -  out: 4,023 tk (2,203 tk reas)"
-		);
+		let line3_text: String = lines[3].spans.iter().map(|s| s.content.as_ref()).collect();
+		assert!(line3_text.contains("1,030 tk"));
+		assert!(line3_text.contains("4,023 tk"));
+		assert!(line3_text.contains("2,203 tk reas"));
 
 		// Line 4: Separator
 		assert!(lines[4].spans.is_empty());
@@ -228,7 +239,10 @@ mod tests {
 
 		// Line 2: Work info
 		assert_eq!(lines[2].spans[0].content, "▌ ");
-		assert_eq!(lines[2].spans[1].content, "AI Done – claude-3-5-sonnet – 500ms");
+		assert_eq!(lines[2].spans[1].content, "AI Done");
+		let line2_text: String = lines[2].spans.iter().map(|s| s.content.as_ref()).collect();
+		assert!(line2_text.contains("claude-3-5-sonnet"));
+		assert!(line2_text.contains("500ms"));
 
 		// Line 3: Separator
 		assert!(lines[3].spans.is_empty());
