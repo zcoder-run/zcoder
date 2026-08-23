@@ -1,13 +1,17 @@
 use crate::core::sys_state::SysState;
 use crate::core::types::{ScrollIden, ScrollZones};
+use crate::view::tblock::AiWorkInfo;
 use ratatui::layout::Rect;
 
 pub struct TuiState {
 	input: String,
 	waiting: bool,
 	status: String,
+	last_prompt: Option<String>,
 	last_answer: Option<String>,
 	last_error: Option<String>,
+	ai_work_info: Option<AiWorkInfo>,
+	work_start_us: Option<i64>,
 	scroll_zones: ScrollZones,
 	show_sys_states: bool,
 	sys_state: SysState,
@@ -25,8 +29,11 @@ impl TuiState {
 			input: initial_prompt.unwrap_or_default(),
 			waiting: false,
 			status: "Idle".to_string(),
+			last_prompt: None,
 			last_answer: None,
 			last_error: None,
+			ai_work_info: None,
+			work_start_us: None,
 			scroll_zones: ScrollZones::default(),
 			show_sys_states: false,
 			sys_state: SysState::default(),
@@ -68,6 +75,15 @@ impl TuiState {
 		self.status = status;
 	}
 
+	#[allow(dead_code)]
+	pub fn last_prompt(&self) -> Option<&str> {
+		self.last_prompt.as_deref()
+	}
+
+	pub fn set_last_prompt(&mut self, prompt: Option<String>) {
+		self.last_prompt = prompt;
+	}
+
 	pub fn last_answer(&self) -> Option<&str> {
 		self.last_answer.as_deref()
 	}
@@ -82,6 +98,37 @@ impl TuiState {
 
 	pub fn set_last_error(&mut self, error: Option<String>) {
 		self.last_error = error;
+	}
+
+	#[allow(dead_code)]
+	pub fn ai_work_info(&self) -> Option<&AiWorkInfo> {
+		self.ai_work_info.as_ref()
+	}
+
+	pub fn ai_work_info_mut(&mut self) -> Option<&mut AiWorkInfo> {
+		self.ai_work_info.as_mut()
+	}
+
+	pub fn set_ai_work_info(&mut self, info: Option<AiWorkInfo>) {
+		self.ai_work_info = info;
+	}
+
+	pub fn work_start_us(&self) -> Option<i64> {
+		self.work_start_us
+	}
+
+	pub fn set_work_start_us(&mut self, start_us: Option<i64>) {
+		self.work_start_us = start_us;
+	}
+
+	pub fn update_elapsed_time(&mut self, now_us: i64) {
+		if let Some(start_us) = self.work_start_us
+			&& let Some(info) = self.ai_work_info.as_mut()
+			&& info.is_running
+		{
+			let elapsed_us = (now_us - start_us).max(0);
+			info.duration = Some(format_duration_us(elapsed_us));
+		}
 	}
 
 	#[allow(dead_code)]
@@ -215,6 +262,29 @@ fn format_memory(bytes: u64) -> String {
 		format!("{:.2} KB", bytes_f / KB)
 	} else {
 		format!("{bytes} B")
+	}
+}
+
+pub(crate) fn format_duration_us(us: i64) -> String {
+	let ms = us / 1000;
+	if ms < 1000 {
+		format!("{ms}ms")
+	} else if ms < 60_000 {
+		let secs = ms / 1000;
+		let rem_ms = ms % 1000;
+		if rem_ms > 0 {
+			format!("{secs}s {rem_ms}ms")
+		} else {
+			format!("{secs}s")
+		}
+	} else {
+		let mins = ms / 60_000;
+		let rem_secs = (ms % 60_000) / 1000;
+		if rem_secs > 0 {
+			format!("{mins}m {rem_secs}s")
+		} else {
+			format!("{mins}m")
+		}
 	}
 }
 
@@ -365,6 +435,48 @@ mod tests {
 		state.set_db_memory(247_459);
 		assert_eq!(state.db_memory(), 247_459);
 		assert_eq!(state.db_memory_fmt(), "241.66 KB");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_last_prompt() -> Result<()> {
+		let mut state = TuiState::new(None);
+		assert_eq!(state.last_prompt(), None);
+
+		state.set_last_prompt(Some("What is Rust?".to_string()));
+		assert_eq!(state.last_prompt(), Some("What is Rust?"));
+
+		state.set_last_prompt(None);
+		assert_eq!(state.last_prompt(), None);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_ai_work_info_and_elapsed() -> Result<()> {
+		let mut state = TuiState::new(None);
+		assert_eq!(state.ai_work_info(), None);
+
+		let info = AiWorkInfo::new(true).with_model("gemini-2.5-flash");
+		state.set_ai_work_info(Some(info));
+		state.set_work_start_us(Some(1_000_000));
+
+		state.update_elapsed_time(6_194_000);
+		let work_info = state.ai_work_info().ok_or("should have work info")?;
+		assert_eq!(work_info.duration.as_deref(), Some("5s 194ms"));
+		assert_eq!(work_info.model.as_deref(), Some("gemini-2.5-flash"));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_core_tui_state_format_duration_us() -> Result<()> {
+		assert_eq!(format_duration_us(250_000), "250ms");
+		assert_eq!(format_duration_us(5_000_000), "5s");
+		assert_eq!(format_duration_us(5_194_000), "5s 194ms");
+		assert_eq!(format_duration_us(60_000_000), "1m");
+		assert_eq!(format_duration_us(103_000_000), "1m 43s");
 
 		Ok(())
 	}

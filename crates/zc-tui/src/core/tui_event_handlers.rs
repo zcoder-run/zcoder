@@ -7,7 +7,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKin
 use ratatui::layout::Position;
 use tracing::debug;
 use zc_core::exec::{ExecCmd, ExecCmdTx, ExecEvent};
-use zc_core::model::{ModelEvent, RunBmc, get_model_manager};
+use zc_core::model::{AirBmc, ModelEvent, RunBmc, get_model_manager};
 
 /// return `true` if needs quit
 pub async fn handle_tui_event(
@@ -39,7 +39,12 @@ pub async fn handle_tui_event(
 			false
 		}
 
-		TuiEvent::Tick | TuiEvent::DoRedraw => false,
+		TuiEvent::Tick => {
+			StateProcessor::apply_tick(state);
+			false
+		}
+
+		TuiEvent::DoRedraw => false,
 	};
 
 	StateProcessor::process_sys_metrics(state).await;
@@ -108,9 +113,7 @@ pub async fn handle_app_action(state: &mut TuiState, executor_tx: &ExecCmdTx, ac
 	match action {
 		AppActionEvent::Quit => Ok(true),
 		AppActionEvent::RunPrompt(prompt) => {
-			state.clear_input();
-			state.set_waiting(true);
-			state.set_last_error(None);
+			StateProcessor::start_prompt_run(state);
 			executor_tx.send(ExecCmd::RunPrompt(prompt)).await?;
 			Ok(false)
 		}
@@ -120,34 +123,35 @@ pub async fn handle_app_action(state: &mut TuiState, executor_tx: &ExecCmdTx, ac
 pub async fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 	match status {
 		ExecEvent::RunStart(id) => {
+			StateProcessor::apply_run_start(state);
 			state.set_status(format!("Sending to AI (run: {id})..."));
 		}
 		ExecEvent::RunEnd(_id) => {
-			state.set_waiting(false);
-			state.set_status("Idle".to_string());
+			StateProcessor::apply_run_end(state);
 		}
 		ExecEvent::RunError(id) => {
-			state.set_waiting(false);
-			state.set_status("Error".to_string());
+			let mut err_msg = "Error".to_string();
 			if let Ok(mm) = get_model_manager()
 				&& let Ok(run) = RunBmc::get(mm, id).await
 				&& let Some(err) = run.error
 			{
-				state.set_last_error(Some(err));
+				err_msg = err;
 			}
+			StateProcessor::apply_run_error(state, err_msg);
 		}
 	}
 }
 
 pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -> Result<()> {
-	// do nothing for now
-	// tracing::debug!("TUI GOT MODEL EVENT:\n{model_event:#?}")
 	match model_event.entity {
 		zc_core::model::EntityType::Run => {
 			let mm = get_model_manager()?;
 			if let Some(run_id) = model_event.id
 				&& let Ok(run) = RunBmc::get(mm, run_id).await
 			{
+				if let Some(prompt) = run.prompt {
+					state.set_last_prompt(Some(prompt));
+				}
 				state.set_last_answer(run.answer);
 				if let Some(error) = run.error {
 					state.set_last_error(Some(error));
@@ -157,7 +161,25 @@ pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -
 			}
 		}
 		zc_core::model::EntityType::Aixc => {
-			// do nothing for now
+			let mm = get_model_manager()?;
+			if let Some(air_id) = model_event.id
+				&& let Ok(air) = AirBmc::get(mm, air_id).await
+			{
+				let model = air.model_ov.or(air.model_upstream);
+				let start_us = air.ai_start.or(air.start).unwrap_or(air.ctime).as_i64();
+				let duration_us = air.ai_end.or(air.end).map(|end| (end.as_i64() - start_us).max(0));
+				let tokens = (
+					air.token_in.map(|v| v as u32),
+					air.token_out.map(|v| v as u32),
+					air.token_reason.map(|v| v as u32),
+				);
+
+				if air.end.is_some() || air.ai_end.is_some() || air.end_state.is_some() {
+					StateProcessor::apply_ai_done(state, model, duration_us, tokens);
+				} else {
+					StateProcessor::apply_ai_start(state, model, start_us);
+				}
+			}
 		}
 	}
 	Ok(())
@@ -313,6 +335,100 @@ mod tests {
 		// -- Check
 		assert!(!quit);
 		assert_eq!(state.last_error(), Some("Syntax error in script"));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_model_event_aixc_lifecycle() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+		let mm = get_model_manager()?;
+
+		let run_id = RunBmc::create(
+			mm,
+			zc_core::model::RunForCreate {
+				prompt: Some("AI request test".to_string()),
+				answer: None,
+			},
+		)
+		.await?;
+
+		let air_c = zc_core::model::AirForCreate {
+			run_id,
+			label: Some("test_call".to_string()),
+			model_ov: Some("gemini-2.5-flash".to_string()),
+			model_upstream: None,
+			prompt_json: None,
+			answer_json: None,
+			usage_json: None,
+			token_in: None,
+			token_out: None,
+			token_reason: None,
+			token_cache_hit: None,
+			token_cache_write: None,
+			cost: None,
+			error: None,
+			end_state: None,
+			start: Some(1_000_000.into()),
+			ai_start: Some(1_000_000.into()),
+			ai_end: None,
+			end: None,
+		};
+		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
+
+		// -- Exec: ModelEvent for Aixc Created (In Progress)
+		let model_event_start = TuiEvent::Model(zc_core::model::ModelEvent::new(
+			zc_core::model::EntityType::Aixc,
+			zc_core::model::EntityAction::Created,
+			Some(air_id),
+			zc_core::model::RelIds { run_id: Some(run_id) },
+		));
+		handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event_start).await?;
+
+		// -- Check: AI work info running
+		let info = state.ai_work_info().ok_or("should have ai work info")?;
+		assert!(info.is_running);
+		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
+
+		// -- Exec: Tick
+		handle_tui_event(&mut state, &tui_tx, &exec_tx, TuiEvent::Tick).await?;
+
+		// -- Setup: Update Aixc to Done with tokens
+		AirBmc::update(
+			mm,
+			air_id,
+			zc_core::model::AirForUpdate {
+				ai_end: Some(3_500_000.into()),
+				end: Some(3_500_000.into()),
+				token_in: Some(512),
+				token_out: Some(128),
+				token_reason: Some(64),
+				end_state: Some("success".to_string()),
+				..Default::default()
+			},
+		)
+		.await?;
+
+		// -- Exec: ModelEvent for Aixc Updated (Done)
+		let model_event_done = TuiEvent::Model(zc_core::model::ModelEvent::new(
+			zc_core::model::EntityType::Aixc,
+			zc_core::model::EntityAction::Updated,
+			Some(air_id),
+			zc_core::model::RelIds { run_id: Some(run_id) },
+		));
+		handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event_done).await?;
+
+		// -- Check: AI work info completed with token counts and duration
+		let info = state.ai_work_info().ok_or("should have ai work info")?;
+		assert!(!info.is_running);
+		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
+		assert_eq!(info.duration.as_deref(), Some("2s 500ms"));
+		assert_eq!(info.input_tokens, Some(512));
+		assert_eq!(info.output_tokens, Some(128));
+		assert_eq!(info.reasoning_tokens, Some(64));
 
 		Ok(())
 	}

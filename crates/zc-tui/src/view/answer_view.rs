@@ -41,15 +41,38 @@ impl AnswerView {
 }
 
 pub fn build_content_lines(state: &TuiState, content_width: u16) -> Vec<Line<'static>> {
+	let mut lines = Vec::new();
+
+	if let Some(prompt) = state.last_prompt() {
+		lines.extend(tblock::build_prompt_block(prompt, content_width));
+	}
+
+	if let Some(work_info) = state.ai_work_info() {
+		if !lines.is_empty() {
+			lines.push(Line::default());
+		}
+		lines.extend(tblock::build_ai_work_block(work_info));
+	}
+
 	if let Some(err) = state.last_error() {
-		build_error_lines(err, content_width)
+		if !lines.is_empty() {
+			lines.push(Line::default());
+		}
+		lines.extend(build_error_lines(err, content_width));
 	} else if let Some(ans) = state.last_answer() {
-		tblock::build_answer_block(ans, content_width)
-	} else {
+		if !lines.is_empty() {
+			lines.push(Line::default());
+		}
+		lines.extend(tblock::build_answer_block(ans, content_width));
+	}
+
+	if lines.is_empty() {
 		vec![Line::from(Span::styled(
 			"No answer yet. Type a prompt and press Enter.".to_string(),
 			style::STL_ANSWER_MUTED,
 		))]
+	} else {
+		lines
 	}
 }
 
@@ -63,6 +86,7 @@ pub fn build_error_lines(err: &str, content_width: u16) -> Vec<Line<'static>> {
 mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
+	use crate::view::tblock::AiWorkInfo;
 	use super::*;
 
 	#[test]
@@ -96,6 +120,121 @@ mod tests {
 		assert_eq!(lines.len(), 1);
 		assert_eq!(lines[0].spans[0].content, "▌ ");
 		assert_eq!(lines[0].spans[1].content, "Model response text");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_view_answer_composite_sequence_running() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_last_prompt(Some("Explain quantum computers".to_string()));
+		state.set_ai_work_info(Some(
+			AiWorkInfo::new(true)
+				.with_model("gemini-flash-4.7")
+				.with_duration("2s 350ms"),
+		));
+
+		// -- Exec
+		let lines = build_content_lines(&state, 80);
+
+		// -- Check
+		// Line 0: Prompt block
+		assert_eq!(lines[0].spans[0].content, "▌ ");
+		assert_eq!(lines[0].spans[1].content, "Explain quantum computers");
+
+		// Line 1: Separator
+		assert!(lines[1].spans.is_empty());
+
+		// Line 2: Work running block
+		assert_eq!(lines[2].spans[0].content, "▌ ");
+		assert_eq!(lines[2].spans[1].content, "AI Running – gemini-flash-4.7 – 2s 350ms");
+
+		assert_eq!(lines.len(), 3);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_view_answer_composite_sequence_done_with_answer() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_last_prompt(Some("Explain quantum computers".to_string()));
+		state.set_ai_work_info(Some(
+			AiWorkInfo::new(false)
+				.with_model("gemini-flash-4.7")
+				.with_duration("1m 43s")
+				.with_tokens(Some(1030), Some(4023), Some(2203)),
+		));
+		state.set_last_answer(Some("Quantum computers use quantum bits (qubits).".to_string()));
+
+		// -- Exec
+		let lines = build_content_lines(&state, 80);
+
+		// -- Check
+		// Line 0: Prompt block
+		assert_eq!(lines[0].spans[0].content, "▌ ");
+		assert_eq!(lines[0].spans[1].content, "Explain quantum computers");
+
+		// Line 1: Separator
+		assert!(lines[1].spans.is_empty());
+
+		// Line 2: Work done line 1
+		assert_eq!(lines[2].spans[0].content, "▌ ");
+		assert_eq!(lines[2].spans[1].content, "AI Done – gemini-flash-4.7 – 1m 43s");
+
+		// Line 3: Work done line 2 (tokens)
+		assert_eq!(lines[3].spans[0].content, "▌ ");
+		assert_eq!(lines[3].spans[1].content, "in: 1,030 tk – out: 4,023 tk (2,203 tk reas)");
+
+		// Line 4: Separator
+		assert!(lines[4].spans.is_empty());
+
+		// Line 5: Answer block
+		assert_eq!(lines[5].spans[0].content, "▌ ");
+		assert_eq!(lines[5].spans[1].content, "Quantum computers use quantum bits (qubits).");
+
+		assert_eq!(lines.len(), 6);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_view_answer_composite_sequence_with_error() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_last_prompt(Some("Run failing script".to_string()));
+		state.set_ai_work_info(Some(
+			AiWorkInfo::new(false)
+				.with_model("claude-3-5-sonnet")
+				.with_duration("500ms"),
+		));
+		state.set_last_error(Some("Rate limit exceeded".to_string()));
+
+		// -- Exec
+		let lines = build_content_lines(&state, 80);
+
+		// -- Check
+		// Line 0: Prompt
+		assert_eq!(lines[0].spans[0].content, "▌ ");
+		assert_eq!(lines[0].spans[1].content, "Run failing script");
+
+		// Line 1: Separator
+		assert!(lines[1].spans.is_empty());
+
+		// Line 2: Work info
+		assert_eq!(lines[2].spans[0].content, "▌ ");
+		assert_eq!(lines[2].spans[1].content, "AI Done – claude-3-5-sonnet – 500ms");
+
+		// Line 3: Separator
+		assert!(lines[3].spans.is_empty());
+
+		// Line 4: Error block
+		assert_eq!(lines[4].spans[0].content, "▌ ");
+		assert_eq!(lines[4].spans[1].content, "✘ ");
+		assert_eq!(lines[4].spans[2].content, "Error: Rate limit exceeded");
+
+		assert_eq!(lines.len(), 5);
 
 		Ok(())
 	}
