@@ -1,4 +1,4 @@
-use crate::{model, prompts};
+use crate::{config, model, prompts};
 use derive_more::{Display, From};
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -10,6 +10,9 @@ pub enum Error {
 	Custom(String),
 
 	// -- Modules
+	#[from]
+	Config(config::Error),
+
 	#[from]
 	Model(model::Error),
 
@@ -33,6 +36,9 @@ pub enum Error {
 
 	#[from]
 	SimpleFs(simple_fs::Error),
+
+	#[from]
+	Asset(zc_asset::Error),
 
 	Aiprog(String),
 }

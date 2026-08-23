@@ -17,6 +17,7 @@ unsafe_code = "forbid"
 
 [dependencies]
 # -- Sub Crates
+zc-asset = { workspace = true }
 zc-common = { workspace = true }
 # -- AI
 genai = { workspace = true }
@@ -26,12 +27,17 @@ aiprog = { workspace = true }
 # -- DB
 rusqlite = { workspace = true, features = ["uuid"] }
 modql = { workspace = true }
+# -- Content Formats
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
 # -- FS
 simple-fs = { workspace = true }
 # -- Async
 tokio = { workspace = true }
+# -- Concurrency
+arc-swap = { workspace = true }
 # -- Others
-serde_json = { workspace = true }
 macro_rules_attribute = { workspace = true }
 uuid = { workspace = true }
 derive_more = { workspace = true }

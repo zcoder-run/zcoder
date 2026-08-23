@@ -3,20 +3,23 @@ use derive_more::{Display, From};
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Display, From)]
-#[display("{self:?}")]
+#[display("{_0}")]
 pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
+	#[display("Model size not found: '{_0}'")]
+	ModelSizeNotFound(String),
+
+	#[display("Model alias cycle: '{_0}'")]
+	ModelAliasCycle(String),
+
 	// -- Externals
 	#[from]
-	SimpleFs(simple_fs::Error),
+	Toml(toml::de::Error),
 
 	#[from]
-	ZcCore(zc_core::exec::Error),
-
-	#[from]
-	ZcTui(zc_tui::Error),
+	Io(std::io::Error),
 }
 
 // region:    --- Custom

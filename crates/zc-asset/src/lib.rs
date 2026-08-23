@@ -5,6 +5,7 @@
 mod error;
 
 pub use error::{Error, Result};
+use std::path::Path;
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
 
@@ -78,6 +79,33 @@ pub fn list_asset_paths(prefix: &str) -> Result<Vec<String>> {
 	Ok(paths)
 }
 
+/// Initialize or update `.zcoder` directory in target project with missing embedded assets.
+pub fn update_zcoder_project(project_dir: impl AsRef<Path>) -> Result<()> {
+	let project_dir = project_dir.as_ref();
+	let zcoder_dir = project_dir.join(".zcoder");
+	if !zcoder_dir.exists() {
+		std::fs::create_dir_all(&zcoder_dir)?;
+	}
+
+	let asset_paths = list_asset_paths("zcoder/")?;
+	for asset_path in asset_paths {
+		if let Some(rel_path) = asset_path.strip_prefix("zcoder/") {
+			let dest_path = zcoder_dir.join(rel_path);
+			if !dest_path.exists() {
+				if let Some(parent) = dest_path.parent()
+					&& !parent.exists()
+				{
+					std::fs::create_dir_all(parent)?;
+				}
+				let content = extract_asset(&asset_path)?;
+				std::fs::write(&dest_path, content)?;
+			}
+		}
+	}
+
+	Ok(())
+}
+
 // endregion: --- Public APIs
 
 // region:    --- Tests
@@ -136,6 +164,37 @@ mod tests {
 
 		// -- Check
 		assert!(res.is_err());
+		Ok(())
+	}
+
+	#[test]
+	fn test_asset_update_zcoder_project() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)?
+			.as_nanos();
+		let temp_dir = std::env::temp_dir().join(format!("zc_asset_test_{nanos}"));
+		std::fs::create_dir_all(&temp_dir)?;
+
+		// -- Exec
+		update_zcoder_project(&temp_dir)?;
+
+		// -- Check
+		let config_path = temp_dir.join(".zcoder").join("config.toml");
+		assert!(config_path.exists());
+		let content = std::fs::read_to_string(&config_path)?;
+		assert!(content.contains("[maestro]"));
+		assert!(content.contains("[model_sizes]"));
+
+		// Test non-overwrite behavior
+		let custom_content = "# custom modification\n[maestro]\nmodel = 'custom'";
+		std::fs::write(&config_path, custom_content)?;
+		update_zcoder_project(&temp_dir)?;
+		let content_after = std::fs::read_to_string(&config_path)?;
+		assert_eq!(content_after, custom_content);
+
+		// -- Clean
+		let _ = std::fs::remove_dir_all(&temp_dir);
 		Ok(())
 	}
 }

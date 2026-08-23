@@ -47,6 +47,8 @@ tracing-appender = { workspace = true }
 tokio = { workspace = true }
 # -- CLI
 clap = { workspace = true }
+# -- FS
+simple-fs = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
 
@@ -60,10 +62,13 @@ zc-tui = { path = "crates/zc-tui" }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"
 crossfire = "3.1.12"
+# -- Concurrency
+arc-swap = "1.7"
 # -- Serde & Content Formats
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 yaml_serde = "0.10.7"
+toml = "0.8"
 handlebars = "6"
 markex = "0.1"
 # -- CLI

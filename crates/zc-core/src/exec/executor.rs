@@ -1,11 +1,10 @@
+use crate::config::ConfigManager;
 use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result, exec_air_chat};
 use crate::model::{EpochUs, ModelManager, RunBmc, RunEndState, RunForCreate, RunForUpdate};
 use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
+use simple_fs::SPath;
 use zc_common::event_base::new_mpsc_bounded;
-
-// -- Consts (harcoded for now)
-const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite";
 
 pub struct Executor {
 	action_rx: ExecCmdRx,
@@ -17,34 +16,43 @@ struct ExecutorInner {
 	// State needed for execution
 	genai_client: genai::Client,
 	base_chat_req: ChatRequest,
-	base_dir: String,
-	model: &'static str,
+	base_dir: SPath,
+	model: Option<String>,
+	config_manager: ConfigManager,
 	script_engine: aiprog::ScriptEngine,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExecutorConfig {
-	base_dir: String,
-	model: &'static str,
+	project_dir: SPath,
+	base_dir: SPath,
+	model: Option<String>,
 }
 
 impl Default for ExecutorConfig {
 	fn default() -> Self {
+		let project_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
 		Self {
-			base_dir: ".demo-dir/".to_string(),
-			model: DEFAULT_MODEL,
+			project_dir,
+			base_dir: SPath::from(".demo-dir/"),
+			model: None,
 		}
 	}
 }
 
 impl ExecutorConfig {
-	pub fn with_base_dir(mut self, base_dir: impl Into<String>) -> Self {
+	pub fn with_project_dir(mut self, project_dir: impl Into<SPath>) -> Self {
+		self.project_dir = project_dir.into();
+		self
+	}
+
+	pub fn with_base_dir(mut self, base_dir: impl Into<SPath>) -> Self {
 		self.base_dir = base_dir.into();
 		self
 	}
 
-	pub fn with_model(mut self, model: &'static str) -> Self {
-		self.model = model;
+	pub fn with_model(mut self, model: impl Into<String>) -> Self {
+		self.model = Some(model.into());
 		self
 	}
 }
@@ -53,6 +61,11 @@ impl Executor {
 	pub fn new(config: ExecutorConfig) -> Result<(Self, ExecCmdTx, ExecEventRx)> {
 		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>("executor_channel", 1000)?;
 		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
+
+		// -- Sync project assets and load config
+		zc_asset::update_zcoder_project(&config.project_dir)?;
+		let config_path = config.project_dir.join(".zcoder").join("config.toml");
+		let config_manager = ConfigManager::from_file(config_path)?;
 
 		let aip_registry = aiprog::AipRegistry::from_aip_modules()?;
 		let script_engine = aiprog::ScriptEngine::builder().with_registry(aip_registry).build()?;
@@ -70,6 +83,7 @@ impl Executor {
 					base_chat_req,
 					base_dir: config.base_dir,
 					model: config.model,
+					config_manager,
 					script_engine,
 				},
 			},
@@ -109,8 +123,13 @@ impl ExecutorInner {
 		let mut chat_req = self.base_chat_req.clone();
 		let base_dir = self.base_dir.clone(); // Assumes PathBuf or String that can clone
 		let genai_client = self.genai_client.clone(); // Assumes your client is cheaply cloneable (Arc-backed)
-		let model = self.model; // Assumes Copy/Clone (like &str or Copy enum)
 		let script_engine = self.script_engine.clone();
+
+		// -- Refresh config and resolve model dynamically
+		let _ = self.config_manager.refresh_if_modified();
+		let active_config = self.config_manager.get_config();
+		let model_ref = self.model.as_deref().unwrap_or(&active_config.maestro.model);
+		let resolved_model = active_config.get_model(model_ref)?;
 
 		// Use an async block with an explicit type annotation
 		let block_result: Result<()> = async move {
@@ -123,7 +142,7 @@ impl ExecutorInner {
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
 			// -- Execute Air Request
-			let (res, _air_id) = exec_air_chat(mm, &genai_client, model, chat_req, run_id, None).await?;
+			let (res, _air_id) = exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, None).await?;
 
 			let ai_response = res
 				.content
@@ -228,12 +247,13 @@ impl ExecutorInner {
 
 // region:    --- Support
 
-fn create_dir_context(base_dir: &str) -> Result<aiprog::DirContext> {
+fn create_dir_context(base_dir: &SPath) -> Result<aiprog::DirContext> {
 	let _ = simple_fs::ensure_dir(base_dir);
 	(|| -> core::result::Result<_, _> {
-		let read_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
-		let write_policy = aiprog::PathPolicy::new([base_dir], aiprog::AbsolutePathPolicy::Allow)?;
-		aiprog::DirContext::new(base_dir, read_policy, write_policy)
+		let base_dir_str = base_dir.as_str();
+		let read_policy = aiprog::PathPolicy::new([base_dir_str], aiprog::AbsolutePathPolicy::Allow)?;
+		let write_policy = aiprog::PathPolicy::new([base_dir_str], aiprog::AbsolutePathPolicy::Allow)?;
+		aiprog::DirContext::new(base_dir_str, read_policy, write_policy)
 	})()
 	.map_err(super::Error::custom_from_err)
 }
@@ -386,6 +406,33 @@ mod tests {
 
 		// -- Check
 		assert_eq!(formatted, raw_msg);
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_new_initializes_project_config() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)?
+			.as_nanos();
+		let temp_dir = std::env::temp_dir().join(format!("zc_exec_test_{nanos}"));
+		std::fs::create_dir_all(&temp_dir)?;
+		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
+
+		// -- Exec
+		let config = ExecutorConfig::default()
+			.with_project_dir(temp_spath.clone())
+			.with_base_dir(temp_spath.join("demo"));
+		let (executor, _tx, _rx) = Executor::new(config)?;
+
+		// -- Check
+		let active_config = executor.inner.config_manager.get_config();
+		assert_eq!(active_config.maestro.model, "$small");
+		let resolved_model = active_config.get_model(&active_config.maestro.model)?;
+		assert_eq!(resolved_model, "gemini-3.5-flash-lite");
+
+		// -- Clean
+		let _ = std::fs::remove_dir_all(&temp_dir);
 		Ok(())
 	}
 }
