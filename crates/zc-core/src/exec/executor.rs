@@ -1,6 +1,4 @@
-use crate::exec::{
-	Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result, exec_air_chat,
-};
+use crate::exec::{Error, ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, Result, exec_air_chat};
 use crate::model::{EpochUs, ModelManager, RunBmc, RunEndState, RunForCreate, RunForUpdate};
 use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};

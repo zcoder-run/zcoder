@@ -26,8 +26,7 @@ impl AnswerView {
 		let scroll = state.clamp_scroll(ScrollIden::AnswerContent, line_count);
 
 		f.render_widget(Block::new().style(style::STL_ANSWER), area);
-		let content = Paragraph::new(lines)
-			.scroll((scroll, 0));
+		let content = Paragraph::new(lines).scroll((scroll, 0));
 		f.render_widget(content, content_area);
 
 		let content_size = line_count.saturating_sub(content_area.height as usize);
@@ -86,8 +85,8 @@ pub fn build_error_lines(err: &str, content_width: u16) -> Vec<Line<'static>> {
 mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
-	use crate::view::tblock::AiWorkInfo;
 	use super::*;
+	use crate::view::tblock::AiWorkInfo;
 
 	#[test]
 	fn test_view_answer_build_content_lines_precedence() -> Result<()> {
@@ -97,7 +96,10 @@ mod tests {
 		// -- Exec & Check: default state
 		let lines = build_content_lines(&state, 80);
 		assert_eq!(lines.len(), 1);
-		assert_eq!(lines[0].spans[0].content, "No answer yet. Type a prompt and press Enter.");
+		assert_eq!(
+			lines[0].spans[0].content,
+			"No answer yet. Type a prompt and press Enter."
+		);
 
 		// -- Exec & Check: last_answer set
 		state.set_last_answer(Some("Model response text".to_string()));
@@ -130,9 +132,7 @@ mod tests {
 		let mut state = TuiState::new(None);
 		state.set_last_prompt(Some("Explain quantum computers".to_string()));
 		state.set_ai_work_info(Some(
-			AiWorkInfo::new(true)
-				.with_model("gemini-flash-4.7")
-				.with_duration("2s 350ms"),
+			AiWorkInfo::new(true).with_model("gemini-flash-4.7").with_duration("2s 350ms"),
 		));
 
 		// -- Exec
@@ -185,14 +185,20 @@ mod tests {
 
 		// Line 3: Work done line 2 (tokens)
 		assert_eq!(lines[3].spans[0].content, "▌ ");
-		assert_eq!(lines[3].spans[1].content, "in: 1,030 tk – out: 4,023 tk (2,203 tk reas)");
+		assert_eq!(
+			lines[3].spans[1].content,
+			"in: 1,030 tk – out: 4,023 tk (2,203 tk reas)"
+		);
 
 		// Line 4: Separator
 		assert!(lines[4].spans.is_empty());
 
 		// Line 5: Answer block
 		assert_eq!(lines[5].spans[0].content, "▌ ");
-		assert_eq!(lines[5].spans[1].content, "Quantum computers use quantum bits (qubits).");
+		assert_eq!(
+			lines[5].spans[1].content,
+			"Quantum computers use quantum bits (qubits)."
+		);
 
 		assert_eq!(lines.len(), 6);
 
@@ -205,9 +211,7 @@ mod tests {
 		let mut state = TuiState::new(None);
 		state.set_last_prompt(Some("Run failing script".to_string()));
 		state.set_ai_work_info(Some(
-			AiWorkInfo::new(false)
-				.with_model("claude-3-5-sonnet")
-				.with_duration("500ms"),
+			AiWorkInfo::new(false).with_model("claude-3-5-sonnet").with_duration("500ms"),
 		));
 		state.set_last_error(Some("Rate limit exceeded".to_string()));
 
@@ -256,7 +260,10 @@ mod tests {
 		assert_eq!(lines[1].spans[0].content, "▌ ");
 		assert_eq!(lines[1].spans[1].content, "5 | local x = nil + 1");
 		assert_eq!(lines[2].spans[0].content, "▌ ");
-		assert_eq!(lines[2].spans[1].content, "attempt to perform arithmetic on a nil value");
+		assert_eq!(
+			lines[2].spans[1].content,
+			"attempt to perform arithmetic on a nil value"
+		);
 
 		Ok(())
 	}

@@ -185,7 +185,12 @@ mod tests {
 		assert_eq!(info.duration.as_deref(), Some("2s 500ms"));
 
 		// -- Exec: AI Done
-		StateProcessor::apply_ai_done(&mut state, Some("claude-3-5-sonnet".to_string()), Some(4_500_000), (Some(120), Some(450), Some(80)));
+		StateProcessor::apply_ai_done(
+			&mut state,
+			Some("claude-3-5-sonnet".to_string()),
+			Some(4_500_000),
+			(Some(120), Some(450), Some(80)),
+		);
 		let info = state.ai_work_info().ok_or("should have work info")?;
 		assert!(!info.is_running);
 		assert_eq!(info.duration.as_deref(), Some("4s 500ms"));

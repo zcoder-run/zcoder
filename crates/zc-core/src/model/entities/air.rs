@@ -418,16 +418,8 @@ mod tests {
 
 		// -- Exec: Prep & Create Air
 		let start = EpochUs::now();
-		let chat_req = genai::chat::ChatRequest::from_messages(vec![
-			genai::chat::ChatMessage::user("count to three"),
-		]);
-		let air_c = crate::exec::prep_air_for_create(
-			run_id,
-			Some("test-model"),
-			&chat_req,
-			start,
-			Some("step-label"),
-		);
+		let chat_req = genai::chat::ChatRequest::from_messages(vec![genai::chat::ChatMessage::user("count to three")]);
+		let air_c = crate::exec::prep_air_for_create(run_id, Some("test-model"), &chat_req, start, Some("step-label"));
 		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 		// -- Check: Initial Air State

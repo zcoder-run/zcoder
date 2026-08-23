@@ -78,12 +78,7 @@ impl AiWorkInfo {
 		self
 	}
 
-	pub fn with_tokens(
-		mut self,
-		input: Option<u32>,
-		output: Option<u32>,
-		reasoning: Option<u32>,
-	) -> Self {
+	pub fn with_tokens(mut self, input: Option<u32>, output: Option<u32>, reasoning: Option<u32>) -> Self {
 		self.input_tokens = input;
 		self.output_tokens = output;
 		self.reasoning_tokens = reasoning;

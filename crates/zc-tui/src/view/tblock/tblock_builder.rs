@@ -1,7 +1,6 @@
 use crate::view::style::{
-	STL_ANSWER, STL_ANSWER_ERR, STL_ANSWER_ERR_BODY, STL_ANSWER_ERR_CODE, STL_ANSWER_ERR_HDR,
-	STL_TBLOCK_RUNNING_ID, STL_TBLOCK_RUNNING_MODEL, STL_TBLOCK_RUNNING_MSG,
-	STL_TBLOCK_WORK_DETAIL, STL_TBLOCK_WORK_MSG,
+	STL_ANSWER, STL_ANSWER_ERR, STL_ANSWER_ERR_BODY, STL_ANSWER_ERR_CODE, STL_ANSWER_ERR_HDR, STL_TBLOCK_RUNNING_ID,
+	STL_TBLOCK_RUNNING_MODEL, STL_TBLOCK_RUNNING_MSG, STL_TBLOCK_WORK_DETAIL, STL_TBLOCK_WORK_MSG,
 };
 use crate::view::tblock::{AiWorkInfo, TBlockKind};
 use ratatui::text::{Line, Span};
@@ -36,27 +35,18 @@ pub fn build_tblock(kind: TBlockKind, text: &str, content_width: u16) -> Vec<Lin
 	let style = kind.content_style();
 
 	if text.is_empty() {
-		return vec![Line::from(vec![
-			bar_span(kind),
-			Span::styled("", style),
-		])];
+		return vec![Line::from(vec![bar_span(kind), Span::styled("", style)])];
 	}
 
 	let mut lines = Vec::new();
 	for raw_line in text.lines() {
 		let normalized = raw_line.replace('\t', "    ");
 		if normalized.is_empty() {
-			lines.push(Line::from(vec![
-				bar_span(kind),
-				Span::styled("", style),
-			]));
+			lines.push(Line::from(vec![bar_span(kind), Span::styled("", style)]));
 		} else {
 			let wrapped = textwrap::wrap(&normalized, wrap_width);
 			if wrapped.is_empty() {
-				lines.push(Line::from(vec![
-					bar_span(kind),
-					Span::styled("", style),
-				]));
+				lines.push(Line::from(vec![bar_span(kind), Span::styled("", style)]));
 			} else {
 				for cow_str in wrapped {
 					lines.push(Line::from(vec![
@@ -69,10 +59,7 @@ pub fn build_tblock(kind: TBlockKind, text: &str, content_width: u16) -> Vec<Lin
 	}
 
 	if lines.is_empty() {
-		lines.push(Line::from(vec![
-			bar_span(kind),
-			Span::styled("", style),
-		]));
+		lines.push(Line::from(vec![bar_span(kind), Span::styled("", style)]));
 	}
 
 	lines
@@ -115,17 +102,9 @@ pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 		Span::styled(line1_text, STL_TBLOCK_WORK_MSG),
 	]));
 
-	if !info.is_running
-		&& (info.input_tokens.is_some() || info.output_tokens.is_some())
-	{
-		let in_str = info
-			.input_tokens
-			.map(format_count_commas)
-			.unwrap_or_else(|| "0".to_string());
-		let out_str = info
-			.output_tokens
-			.map(format_count_commas)
-			.unwrap_or_else(|| "0".to_string());
+	if !info.is_running && (info.input_tokens.is_some() || info.output_tokens.is_some()) {
+		let in_str = info.input_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
+		let out_str = info.output_tokens.map(format_count_commas).unwrap_or_else(|| "0".to_string());
 
 		let mut line2_text = format!("in: {in_str} tk – out: {out_str} tk");
 		if let Some(reas) = info.reasoning_tokens
@@ -146,11 +125,7 @@ pub fn build_ai_work_block(info: &AiWorkInfo) -> Vec<Line<'static>> {
 
 /// Builds lines for a single-line running execution block with indicator bar and metadata.
 #[allow(dead_code)]
-pub fn build_running_block(
-	status: &str,
-	run_id: Option<&str>,
-	model: Option<&str>,
-) -> Vec<Line<'static>> {
+pub fn build_running_block(status: &str, run_id: Option<&str>, model: Option<&str>) -> Vec<Line<'static>> {
 	let mut spans = vec![
 		bar_span(TBlockKind::Running),
 		Span::styled(status.to_string(), STL_TBLOCK_RUNNING_MSG),
@@ -296,8 +271,8 @@ pub fn build_error_block(err: &str, content_width: u16) -> Vec<Line<'static>> {
 mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
-	use crate::view::style::STL_BAR_WORK;
 	use super::*;
+	use crate::view::style::STL_BAR_WORK;
 
 	#[test]
 	fn test_tblock_builder_prompt() -> Result<()> {
@@ -413,9 +388,7 @@ mod tests {
 	#[test]
 	fn test_tblock_builder_ai_work_running() -> Result<()> {
 		// -- Setup & Fixtures
-		let info = AiWorkInfo::new(true)
-			.with_model("gemini-flash-4.7")
-			.with_duration("5s 194ms");
+		let info = AiWorkInfo::new(true).with_model("gemini-flash-4.7").with_duration("5s 194ms");
 
 		// -- Exec
 		let lines = build_ai_work_block(&info);
@@ -451,7 +424,10 @@ mod tests {
 
 		assert_eq!(lines[1].spans[0].content, "▌ ");
 		assert_eq!(lines[1].spans[0].style, STL_BAR_WORK);
-		assert_eq!(lines[1].spans[1].content, "in: 1,030 tk – out: 4,023 tk (2,203 tk reas)");
+		assert_eq!(
+			lines[1].spans[1].content,
+			"in: 1,030 tk – out: 4,023 tk (2,203 tk reas)"
+		);
 		assert_eq!(lines[1].spans[1].style, STL_TBLOCK_WORK_DETAIL);
 
 		Ok(())
@@ -460,10 +436,11 @@ mod tests {
 	#[test]
 	fn test_tblock_builder_ai_work_done_without_reasoning() -> Result<()> {
 		// -- Setup & Fixtures
-		let info = AiWorkInfo::new(false)
-			.with_model("gpt-4o")
-			.with_duration("2s")
-			.with_tokens(Some(500), Some(120), None);
+		let info =
+			AiWorkInfo::new(false)
+				.with_model("gpt-4o")
+				.with_duration("2s")
+				.with_tokens(Some(500), Some(120), None);
 
 		// -- Exec
 		let lines = build_ai_work_block(&info);
@@ -478,9 +455,7 @@ mod tests {
 	#[test]
 	fn test_tblock_builder_ai_work_done_no_tokens() -> Result<()> {
 		// -- Setup & Fixtures
-		let info = AiWorkInfo::new(false)
-			.with_model("claude-3-5-sonnet")
-			.with_duration("3s");
+		let info = AiWorkInfo::new(false).with_model("claude-3-5-sonnet").with_duration("3s");
 
 		// -- Exec
 		let lines = build_ai_work_block(&info);

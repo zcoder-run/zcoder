@@ -2,9 +2,7 @@
 
 use crate::exec::Result;
 use crate::exec::air_exec::usage::{ExtractedUsage, extract_usage_metrics};
-use crate::model::{
-	AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager,
-};
+use crate::model::{AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager};
 use genai::chat::{ChatRequest, ChatResponse};
 
 // endregion: --- Modules
@@ -134,10 +132,7 @@ mod tests {
 	use super::*;
 	use genai::ModelIden;
 	use genai::adapter::AdapterKind;
-	use genai::chat::{
-		ChatMessage, ChatResponse, CompletionTokensDetails, MessageContent, PromptTokensDetails,
-		Usage,
-	};
+	use genai::chat::{ChatMessage, ChatResponse, CompletionTokensDetails, MessageContent, PromptTokensDetails, Usage};
 	use uuid::Uuid;
 
 	#[test]
