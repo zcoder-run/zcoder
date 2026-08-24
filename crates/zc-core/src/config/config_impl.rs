@@ -179,7 +179,7 @@ impl ConfigInner {
 		}
 
 		let (trimmed_base, query_suffixes) = peel_reasoning_suffixes(trimmed);
-		let mut target_suffixes = Vec::new();
+		let mut size_suffixes = Vec::new();
 
 		// 1. Check size preset if starts with '$'
 		let target = if let Some(size_key) = trimmed_base.strip_prefix('$') {
@@ -190,7 +190,7 @@ impl ConfigInner {
 				.map(|s| s.as_str())
 				.ok_or_else(|| Error::ModelSizeNotFound(trimmed_base.to_string()))?;
 			let (size_base, s_suffixes) = peel_reasoning_suffixes(size_val);
-			target_suffixes.extend(s_suffixes);
+			size_suffixes = s_suffixes;
 			size_base
 		} else {
 			trimmed_base
@@ -200,11 +200,12 @@ impl ConfigInner {
 		let mut current = target;
 		let mut visited = HashSet::new();
 		visited.insert(current);
+		let mut alias_hops_suffixes: Vec<Vec<&str>> = Vec::new();
 
 		for _ in 0..MAX_ALIAS_DEPTH {
 			if let Some(aliased) = self.model_aliases.as_ref().and_then(|aliases| aliases.get(current)) {
 				let (next, a_suffixes) = peel_reasoning_suffixes(aliased);
-				target_suffixes.extend(a_suffixes);
+				alias_hops_suffixes.push(a_suffixes);
 				if visited.contains(next) {
 					return Err(Error::ModelAliasCycle(format!(
 						"Circular model alias detected for '{trimmed_base}' at '{next}'"
@@ -218,7 +219,12 @@ impl ConfigInner {
 		}
 
 		let mut model = current.to_string();
-		for suffix in target_suffixes {
+		for hop_suffixes in alias_hops_suffixes.into_iter().rev() {
+			for suffix in hop_suffixes {
+				model.push_str(suffix);
+			}
+		}
+		for suffix in size_suffixes {
 			model.push_str(suffix);
 		}
 		for suffix in query_suffixes {
@@ -639,7 +645,31 @@ c = "base-model"
 		let model = config.get_model("a-high")?;
 
 		// -- Check
-		assert_eq!(model, "base-model-low-medium-high");
+		assert_eq!(model, "base-model-medium-low-high");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_size_with_suffix_resolving_alias_with_suffix() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_sizes]
+small = "qwen-low"
+
+[model_aliases]
+qwen = "qwen_cloud::qwen3.8-max"
+"#,
+		)?;
+
+		// -- Exec
+		let model = config.get_model("$small")?;
+		let model_suffixed = config.get_model("$small-high")?;
+
+		// -- Check
+		assert_eq!(model, "qwen_cloud::qwen3.8-max-low");
+		assert_eq!(model_suffixed, "qwen_cloud::qwen3.8-max-low-high");
 
 		Ok(())
 	}

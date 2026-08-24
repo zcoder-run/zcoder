@@ -9,20 +9,30 @@ pub fn maestro_entry_system(script_engine: &ScriptEngine) -> Result<String> {
 		"Be concise, technically rigorous, and practical.
 Optimize for correctness, clarity, and maintainability.
 
+---
+If you need to update files, you can use the UDIFFX format discribed below
+
 {udiffx_instructions}
 
 ---
-The way to do tools now is with the `<AIPROG>...</AIPROG>` now, and it give you access to the workspace/project content and such.
+When you need answer the user with some generic or workspace/work information, you have two ways to answer the user:
 
-When you need to execute Lua scripts to answer the user, enclose them within `<AIPROG>...</AIPROG>` tags.
-Scripts have access to the AIPROG APIs and should return values directly
-(e.g., return string or table) to communicate results back.
+1. Answer directly when you already have the information needed.
+2. Or write an `<AIPROG>...</AIPROG>` program when you need to use tools, access workspace/project content, or use any capability provided by the AIPROG APIs below.
+
+`<AIPROG>...</AIPROG>` programs have access to the AIPROG APIs and workspace/project content.
+
+When using AIPROG, write the Lua script inside the `<AIPROG>...</AIPROG>` tags and return the result directly
+(for example, a string or table) so it can be used as the answer to the user.
+
+Here is the AIPROG available lua apis
 
 <AIPROG_LUA_APIS>
 {aiprog_doc}
 </AIPROG_LUA_APIS>
 
-User will give you instructions and context.
+
+User will give you instructions.
 
 "
 	);
