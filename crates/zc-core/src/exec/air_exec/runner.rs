@@ -4,7 +4,7 @@ use crate::exec::Result;
 use crate::exec::air_exec::pricing::price_it;
 use crate::exec::air_exec::usage::{ExtractedUsage, extract_usage_metrics};
 use crate::model::{AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager, RunBmc};
-use genai::chat::{ChatRequest, ChatResponse};
+use genai::chat::{ChatOptions, ChatRequest, ChatResponse};
 
 // endregion: --- Modules
 
@@ -24,7 +24,11 @@ pub async fn exec_air_chat(
 	let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 	let ai_start = EpochUs::now();
-	let chat_res = match client.exec_chat(model, chat_req, None).await {
+
+	// For development, we capture the raw body
+	let options = ChatOptions::default().with_capture_raw_body(true);
+
+	let chat_res = match client.exec_chat(model, chat_req, Some(&options)).await {
 		Ok(res) => {
 			let ai_end = EpochUs::now();
 			let end = ai_end;
@@ -97,7 +101,7 @@ pub fn prep_air_for_success(
 	} = extract_usage_metrics(&res.usage);
 
 	let cost = price_it(
-		res.provider_model_iden.adapter_kind.as_str(),
+		res.provider_model_iden.adapter_kind.as_lower_str(),
 		&res.provider_model_iden.model_name,
 		&res.usage,
 	)

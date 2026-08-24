@@ -25,7 +25,9 @@ async fn main() -> Result<()> {
 		// Set up the subscriber with the file writer and log level
 		tracing_subscriber::fmt()
 			.with_writer(non_blocking)
-			.with_env_filter(EnvFilter::new("zcoder=debug,zc_tui=debug,zc_core=debug"))
+			.with_env_filter(EnvFilter::new(
+				"zcoder=debug,zc_tui=debug,zc_core=debug,zc_core=debug,aicost=debug",
+			))
 			.without_time()
 			.with_ansi(false)
 			.init();

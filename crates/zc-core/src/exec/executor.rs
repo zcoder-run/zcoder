@@ -4,6 +4,7 @@ use crate::model::{EpochUs, ModelManager, RunBmc, RunEndState, RunForCreate, Run
 use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
 use simple_fs::SPath;
+use value_ext::JsonValueExt;
 use zc_common::event_base::new_mpsc_bounded;
 
 pub struct Executor {
@@ -161,6 +162,11 @@ impl ExecutorInner {
 
 			// -- Execute Air Request
 			let (res, _air_id) = exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, None).await?;
+
+			if let Some(raw_body) = res.captured_raw_body.as_ref() {
+				let content = raw_body.x_pretty().unwrap_or_else(|e| e.to_string());
+				let _ = zc_common::cache::save_file_cache("last-ai-response-raw.json", &content);
+			}
 
 			let ai_response = res
 				.content
@@ -430,9 +436,7 @@ mod tests {
 	#[test]
 	fn test_exec_new_initializes_project_config() -> Result<()> {
 		// -- Setup & Fixtures
-		let nanos = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)?
-			.as_nanos();
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
 		let temp_dir = std::env::temp_dir().join(format!("zc_exec_test_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
@@ -457,9 +461,7 @@ mod tests {
 	#[test]
 	fn test_exec_config_recovery_on_deletion() -> Result<()> {
 		// -- Setup & Fixtures
-		let nanos = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)?
-			.as_nanos();
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
 		let temp_dir = std::env::temp_dir().join(format!("zc_exec_recovery_test_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
@@ -480,7 +482,10 @@ big = "custom-model"
 "#;
 		std::fs::write(&config_path, custom_toml)?;
 		assert!(executor.inner.config_manager.refresh_if_modified()?);
-		assert_eq!(executor.inner.config_manager.get_config().get_model("$big")?, "custom-model");
+		assert_eq!(
+			executor.inner.config_manager.get_config().get_model("$big")?,
+			"custom-model"
+		);
 
 		// Delete config file to simulate manual deletion
 		let _ = std::fs::remove_file(&config_path);

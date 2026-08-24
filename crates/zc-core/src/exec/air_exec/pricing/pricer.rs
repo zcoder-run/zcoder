@@ -12,7 +12,9 @@ use genai::chat::Usage;
 pub fn price_it(provider_type: &str, model_name: &str, usage: &Usage) -> Option<AiPrice> {
 	let ai_cost = aicost::compute(provider_type, model_name, usage)
 		.or_else(|_| aicost::compute(&provider_type.to_lowercase(), model_name, usage))
-		.ok()?;
+		.ok();
+
+	let ai_cost = ai_cost?;
 	Some(AiPrice {
 		cost: ai_cost.total,
 		cost_cache_write: (ai_cost.input_cache_write > 0.0).then_some(ai_cost.input_cache_write),
