@@ -7,7 +7,7 @@ model     = "$small"
 
 [model_sizes]
 # Addressed with `$` (model = "$small")
-small     = "lite"
+small     = "dflash"
 medium    = "flash"
 big       = "sol"
 
@@ -25,3 +25,11 @@ opus          = "claude-opus-5"
 claude        = "claude-sonnet-5"
 sonnet        = "claude-sonnet-5"
 haiku         = "claude-haiku-4-5"
+# -- kimi
+kimi          = "kimi::kimi-k3"
+kimi-fast     = "kimi::kimi-k2.7-code-highspeed"
+# -- Qwen
+qwen          = "qwen_cloud::qwen3.8-max"
+# -- DeepSeek
+dflash        = "deepseek-v4-flash"
+dpro          = "deepseek-v4-pro"

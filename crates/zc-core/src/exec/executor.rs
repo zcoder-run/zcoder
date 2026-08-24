@@ -165,7 +165,7 @@ impl ExecutorInner {
 
 			if let Some(raw_body) = res.captured_raw_body.as_ref() {
 				let content = raw_body.x_pretty().unwrap_or_else(|e| e.to_string());
-				let _ = zc_common::cache::save_file_cache("last-ai-response-raw.json", &content);
+				let _ = zc_common::cache::save_file_cache("last-ai-02-response-raw.json", &content);
 			}
 
 			let ai_response = res
@@ -173,7 +173,7 @@ impl ExecutorInner {
 				.into_joined_texts()
 				.ok_or_else(|| Error::custom("Should have response"))?;
 
-			let _ = zc_common::cache::save_file_cache("last-ai-response-raw.md", &ai_response);
+			let _ = zc_common::cache::save_file_cache("last-ai-02-response-raw.md", &ai_response);
 
 			// -- Process UDIFFX
 			let (file_changes, other_content) = udiffx::extract_file_changes(&ai_response, true)?;

@@ -178,23 +178,23 @@ impl ConfigInner {
 			return Ok(String::new());
 		}
 
-		let (trimmed, mut suffix) = split_reasoning_suffix(trimmed);
+		let (trimmed_base, query_suffixes) = peel_reasoning_suffixes(trimmed);
+		let mut target_suffixes = Vec::new();
 
 		// 1. Check size preset if starts with '$'
-		let target = if let Some(size_key) = trimmed.strip_prefix('$') {
-			self.model_sizes
+		let target = if let Some(size_key) = trimmed_base.strip_prefix('$') {
+			let size_val = self
+				.model_sizes
 				.as_ref()
 				.and_then(|sizes| sizes.get(size_key))
 				.map(|s| s.as_str())
-				.ok_or_else(|| Error::ModelSizeNotFound(trimmed.to_string()))?
+				.ok_or_else(|| Error::ModelSizeNotFound(trimmed_base.to_string()))?;
+			let (size_base, s_suffixes) = peel_reasoning_suffixes(size_val);
+			target_suffixes.extend(s_suffixes);
+			size_base
 		} else {
-			trimmed
+			trimmed_base
 		};
-
-		let (target, target_suffix) = split_reasoning_suffix(target);
-		if suffix.is_none() {
-			suffix = target_suffix;
-		}
 
 		// 2. Resolve alias chain with cycle detection
 		let mut current = target;
@@ -203,13 +203,11 @@ impl ConfigInner {
 
 		for _ in 0..MAX_ALIAS_DEPTH {
 			if let Some(aliased) = self.model_aliases.as_ref().and_then(|aliases| aliases.get(current)) {
-				let (next, alias_suffix) = split_reasoning_suffix(aliased);
-				if suffix.is_none() {
-					suffix = alias_suffix;
-				}
+				let (next, a_suffixes) = peel_reasoning_suffixes(aliased);
+				target_suffixes.extend(a_suffixes);
 				if visited.contains(next) {
 					return Err(Error::ModelAliasCycle(format!(
-						"Circular model alias detected for '{trimmed}' at '{next}'"
+						"Circular model alias detected for '{trimmed_base}' at '{next}'"
 					)));
 				}
 				visited.insert(next);
@@ -219,11 +217,14 @@ impl ConfigInner {
 			}
 		}
 
-		let model = current.to_string();
-		Ok(match suffix {
-			Some(suffix) => format!("{model}{suffix}"),
-			None => model,
-		})
+		let mut model = current.to_string();
+		for suffix in target_suffixes {
+			model.push_str(suffix);
+		}
+		for suffix in query_suffixes {
+			model.push_str(suffix);
+		}
+		Ok(model)
 	}
 }
 
@@ -277,14 +278,20 @@ impl From<ConfigInner> for ConfigToml {
 
 // region:    --- Support
 
-fn split_reasoning_suffix(model: &str) -> (&str, Option<&str>) {
-	for suffix in REASONING_SUFFIXES {
-		if let Some(base) = model.strip_suffix(suffix) {
-			return (base, Some(suffix));
+fn peel_reasoning_suffixes(mut model: &str) -> (&str, Vec<&str>) {
+	let mut suffixes = Vec::new();
+	'outer: loop {
+		for suffix in REASONING_SUFFIXES {
+			if let Some(base) = model.strip_suffix(suffix) {
+				suffixes.push(suffix);
+				model = base;
+				continue 'outer;
+			}
 		}
+		break;
 	}
-
-	(model, None)
+	suffixes.reverse();
+	(model, suffixes)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -552,6 +559,104 @@ luna = "gpt-5.6-luna"
 
 		// -- Exec
 		let result = config.get_model("loop_a");
+
+		// -- Check
+		assert!(result.is_err());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_natural_suffix_and_repeated() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(SAMPLE_CONFIG)?;
+
+		// -- Exec
+		let direct_max = config.get_model("qwen3.8-max")?;
+		let repeated_max = config.get_model("qwen3.8-max-max")?;
+
+		// -- Check
+		assert_eq!(direct_max, "qwen3.8-max");
+		assert_eq!(repeated_max, "qwen3.8-max-max");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_alias_target_with_suffix_queried_with_suffix() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_aliases]
+qwen = "qwen3.8-max"
+"#,
+		)?;
+
+		// -- Exec
+		let model = config.get_model("qwen-max")?;
+
+		// -- Check
+		assert_eq!(model, "qwen3.8-max-max");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_size_with_suffix_and_query_suffix() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_sizes]
+small = "luna-high"
+
+[model_aliases]
+luna = "gpt-5.6-luna"
+"#,
+		)?;
+
+		// -- Exec
+		let model = config.get_model("$small-max")?;
+
+		// -- Check
+		assert_eq!(model, "gpt-5.6-luna-high-max");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_multi_hop_accumulated_suffixes() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_aliases]
+a = "b-low"
+b = "c-medium"
+c = "base-model"
+"#,
+		)?;
+
+		// -- Exec
+		let model = config.get_model("a-high")?;
+
+		// -- Check
+		assert_eq!(model, "base-model-low-medium-high");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_cycle_detection_with_suffixes() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_aliases]
+cycle_a = "cycle_b-low"
+cycle_b = "cycle_a-high"
+"#,
+		)?;
+
+		// -- Exec
+		let result = config.get_model("cycle_a-max");
 
 		// -- Check
 		assert!(result.is_err());
