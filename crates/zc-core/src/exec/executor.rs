@@ -170,7 +170,7 @@ impl ExecutorInner {
 
 			let ai_response = res
 				.content
-				.into_first_text()
+				.into_joined_texts()
 				.ok_or_else(|| Error::custom("Should have response"))?;
 
 			let _ = zc_common::cache::save_file_cache("last-ai-response-raw.md", &ai_response);
