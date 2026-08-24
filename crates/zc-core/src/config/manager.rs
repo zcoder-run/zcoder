@@ -1,4 +1,4 @@
-use crate::config::{Config, ConfigInner, Result};
+use crate::config::{Config, ConfigInner, DEFAULT_CONFIG_TOML, Result};
 use arc_swap::ArcSwap;
 use simple_fs::SPath;
 use std::fs;
@@ -28,7 +28,13 @@ impl ConfigManager {
 			let inner = ConfigInner::from_toml_str(&content)?;
 			(inner, mtime)
 		} else {
-			(ConfigInner::default(), None)
+			if let Some(parent) = config_path.parent() {
+				let _ = simple_fs::ensure_dir(parent);
+			}
+			let _ = fs::write(&config_path, DEFAULT_CONFIG_TOML);
+			let inner = ConfigInner::from_toml_str(DEFAULT_CONFIG_TOML)?;
+			let mtime = fs::metadata(&config_path).ok().and_then(|m| m.modified().ok());
+			(inner, mtime)
 		};
 
 		Ok(Self {
@@ -45,7 +51,22 @@ impl ConfigManager {
 
 	pub fn refresh_if_modified(&self) -> Result<bool> {
 		if !self.config_path.exists() {
-			return Ok(false);
+			if let Some(parent) = self.config_path.parent() {
+				let _ = simple_fs::ensure_dir(parent);
+			}
+			let _ = fs::write(&self.config_path, DEFAULT_CONFIG_TOML);
+			let new_inner = ConfigInner::from_toml_str(DEFAULT_CONFIG_TOML)?;
+			let current_mtime = fs::metadata(&self.config_path).ok().and_then(|m| m.modified().ok());
+
+			let mut last_mtime_guard = self
+				.last_mtime
+				.lock()
+				.map_err(|_| crate::config::Error::custom("ConfigManager lock poisoned"))?;
+
+			self.current.store(Arc::new(new_inner));
+			*last_mtime_guard = current_mtime;
+
+			return Ok(true);
 		}
 
 		let metadata = fs::metadata(&self.config_path)?;
@@ -99,9 +120,20 @@ mod tests {
 		let config = manager.get_config();
 
 		// -- Check
+		assert!(tmp_path.exists());
 		assert_eq!(config.maestro_model(), "$small");
+		assert_eq!(config.get_model("$small")?, "gemini-3.5-flash-lite");
 		assert!(!manager.refresh_if_modified()?);
 
+		// Clean up test file
+		let _ = fs::remove_file(&tmp_path);
+
+		// Refreshing when deleted should recreate file with defaults
+		assert!(manager.refresh_if_modified()?);
+		assert!(tmp_path.exists());
+		assert_eq!(manager.get_config().get_model("$small")?, "gemini-3.5-flash-lite");
+
+		let _ = fs::remove_file(&tmp_path);
 		Ok(())
 	}
 

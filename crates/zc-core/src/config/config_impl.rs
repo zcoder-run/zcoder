@@ -7,6 +7,35 @@ use std::sync::Arc;
 
 const MAX_ALIAS_DEPTH: usize = 16;
 
+pub const DEFAULT_CONFIG_TOML: &str = r#"[workspace]
+working_dir = "./"   # When relative, relative to cwd of the project_dir
+
+[maestro]
+
+model     = "$small"
+
+[model_sizes]
+# Addressed with `$` (model = "$small")
+small     = "lite"
+medium    = "flash"
+big       = "sol"
+
+[model_aliases]
+# -- google
+lite31        = "gemini-3.1-flash-lite"
+lite          = "gemini-3.5-flash-lite"
+flash         = "gemini-3.7-flash"
+# -- Openai
+luna          = "gpt-5.6-luna"
+terra         = "gpt-5.6-terra"
+sol           = "gpt-5.6-sol"
+# -- Anthropic
+opus          = "claude-opus-5"
+claude        = "claude-sonnet-5"
+sonnet        = "claude-sonnet-5"
+haiku         = "claude-haiku-4-5"
+"#;
+
 // region:    --- Types
 
 #[derive(Debug, Clone, Default)]

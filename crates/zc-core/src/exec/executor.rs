@@ -126,7 +126,8 @@ impl ExecutorInner {
 		let genai_client = self.genai_client.clone(); // Assumes your client is cheaply cloneable (Arc-backed)
 		let script_engine = self.script_engine.clone();
 
-		// -- Refresh config and resolve model dynamically
+		// -- Refresh project assets and config dynamically
+		let _ = zc_asset::update_zcoder_project(&self.wspace_dir);
 		let _ = self.config_manager.refresh_if_modified();
 		let active_config = self.config_manager.get_config();
 		let model_ref = self.model.as_deref().unwrap_or(active_config.maestro_model());
@@ -447,6 +448,54 @@ mod tests {
 		assert_eq!(active_config.maestro_model(), "$small");
 		let resolved_model = active_config.get_model(active_config.maestro_model())?;
 		assert_eq!(resolved_model, "gemini-3.5-flash-lite");
+
+		// -- Clean
+		let _ = std::fs::remove_dir_all(&temp_dir);
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_config_recovery_on_deletion() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)?
+			.as_nanos();
+		let temp_dir = std::env::temp_dir().join(format!("zc_exec_recovery_test_{nanos}"));
+		std::fs::create_dir_all(&temp_dir)?;
+		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
+
+		let config = ExecutorConfig::default().with_wspace_dir(temp_spath.clone());
+		let (executor, _tx, _rx) = Executor::new(config)?;
+
+		let config_path = temp_spath.join(".zcoder").join("config.toml");
+		assert!(config_path.exists());
+
+		// Modify config
+		let custom_toml = r#"
+[maestro]
+model = "$big"
+
+[model_sizes]
+big = "custom-model"
+"#;
+		std::fs::write(&config_path, custom_toml)?;
+		assert!(executor.inner.config_manager.refresh_if_modified()?);
+		assert_eq!(executor.inner.config_manager.get_config().get_model("$big")?, "custom-model");
+
+		// Delete config file to simulate manual deletion
+		let _ = std::fs::remove_file(&config_path);
+		assert!(!config_path.exists());
+
+		// Simulate project update and refresh as done in handle_run_prompt
+		let _ = zc_asset::update_zcoder_project(&executor.inner.wspace_dir);
+		let reloaded = executor.inner.config_manager.refresh_if_modified()?;
+		assert!(reloaded);
+		assert!(config_path.exists());
+
+		// Check defaults are restored
+		let restored_config = executor.inner.config_manager.get_config();
+		assert_eq!(restored_config.maestro_model(), "$small");
+		assert_eq!(restored_config.get_model("$small")?, "gemini-3.5-flash-lite");
 
 		// -- Clean
 		let _ = std::fs::remove_dir_all(&temp_dir);
