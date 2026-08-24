@@ -25,5 +25,7 @@ User will give you instructions and context.
 "
 	);
 
+	let _ = zc_common::cache::save_file_cache("last-ai-01-request-aiprog-doc.md", &aiprog_doc);
+
 	Ok(prompt)
 }
