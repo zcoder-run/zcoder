@@ -31,6 +31,7 @@ Here is the AIPROG available lua apis
 {aiprog_doc}
 </AIPROG_LUA_APIS>
 
+Important when giving information back to the user with AIPROG, do not call print, just return the string or object of the content that needs to be displayed
 
 User will give you instructions.
 
