@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 const MAX_ALIAS_DEPTH: usize = 16;
+const REASONING_SUFFIXES: [&str; 7] = ["-zero", "-none", "-low", "-medium", "-high", "-xhigh", "-max"];
 
 pub const DEFAULT_CONFIG_TOML: &str = r#"[workspace]
 working_dir = "./"   # When relative, relative to cwd of the project_dir
@@ -177,6 +178,8 @@ impl ConfigInner {
 			return Ok(String::new());
 		}
 
+		let (trimmed, mut suffix) = split_reasoning_suffix(trimmed);
+
 		// 1. Check size preset if starts with '$'
 		let target = if let Some(size_key) = trimmed.strip_prefix('$') {
 			self.model_sizes
@@ -188,6 +191,11 @@ impl ConfigInner {
 			trimmed
 		};
 
+		let (target, target_suffix) = split_reasoning_suffix(target);
+		if suffix.is_none() {
+			suffix = target_suffix;
+		}
+
 		// 2. Resolve alias chain with cycle detection
 		let mut current = target;
 		let mut visited = HashSet::new();
@@ -195,7 +203,10 @@ impl ConfigInner {
 
 		for _ in 0..MAX_ALIAS_DEPTH {
 			if let Some(aliased) = self.model_aliases.as_ref().and_then(|aliases| aliases.get(current)) {
-				let next = aliased.as_str();
+				let (next, alias_suffix) = split_reasoning_suffix(aliased);
+				if suffix.is_none() {
+					suffix = alias_suffix;
+				}
 				if visited.contains(next) {
 					return Err(Error::ModelAliasCycle(format!(
 						"Circular model alias detected for '{trimmed}' at '{next}'"
@@ -204,13 +215,15 @@ impl ConfigInner {
 				visited.insert(next);
 				current = next;
 			} else {
-				return Ok(current.to_string());
+				break;
 			}
 		}
 
-		Err(Error::ModelAliasCycle(format!(
-			"Model alias resolution exceeded max depth ({MAX_ALIAS_DEPTH}) for '{trimmed}'"
-		)))
+		let model = current.to_string();
+		Ok(match suffix {
+			Some(suffix) => format!("{model}{suffix}"),
+			None => model,
+		})
 	}
 }
 
@@ -263,6 +276,16 @@ impl From<ConfigInner> for ConfigToml {
 // endregion: --- Froms
 
 // region:    --- Support
+
+fn split_reasoning_suffix(model: &str) -> (&str, Option<&str>) {
+	for suffix in REASONING_SUFFIXES {
+		if let Some(base) = model.strip_suffix(suffix) {
+			return (base, Some(suffix));
+		}
+	}
+
+	(model, None)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigToml {
@@ -425,6 +448,71 @@ medium = "flash"
 
 		// -- Check
 		assert_eq!(model, "gemini-3.7-flash");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_supported_reasoning_suffixes() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(SAMPLE_CONFIG)?;
+		let suffixes = ["-zero", "-none", "-low", "-medium", "-high", "-xhigh", "-max"];
+
+		// -- Exec & Check
+		for suffix in suffixes {
+			let model = config.get_model(&format!("raw-model{suffix}"))?;
+			assert_eq!(model, format!("raw-model{suffix}"));
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_reasoning_suffix_through_model_size() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(
+			r#"
+[model_sizes]
+small = "luna-high"
+
+[model_aliases]
+luna = "gpt-5.6-luna"
+"#,
+		)?;
+
+		// -- Exec
+		let model = config.get_model("$small")?;
+
+		// -- Check
+		assert_eq!(model, "gpt-5.6-luna-high");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_reasoning_suffix_through_alias_chain() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(SAMPLE_CONFIG)?;
+
+		// -- Exec
+		let model = config.get_model("chain_a-high")?;
+
+		// -- Check
+		assert_eq!(model, "final-model-high");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_get_model_unsupported_reasoning_suffix_like_text() -> Result<()> {
+		// -- Setup & Fixtures
+		let config = Config::from_toml_str(SAMPLE_CONFIG)?;
+
+		// -- Exec
+		let model = config.get_model("custom-model-lowish")?;
+
+		// -- Check
+		assert_eq!(model, "custom-model-lowish");
 
 		Ok(())
 	}
