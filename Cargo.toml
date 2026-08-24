@@ -1,6 +1,6 @@
 [package]
 name = "zcoder"
-version = "0.0.2"
+version = "0.0.3-WIP"
 description = "AI coding CLI — very early stage"
 edition = "2024"
 license = "MIT OR Apache-2.0"
