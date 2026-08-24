@@ -1,6 +1,6 @@
 [package]
 name = "zcoder"
-version = "0.0.2-WIP"
+version = "0.0.2"
 description = "AI coding CLI — very early stage"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -54,10 +54,10 @@ derive_more = { workspace = true }
 
 [workspace.dependencies]
 # -- Sub Crates
-zc-asset = { path = "crates/zc-asset" }
-zc-core = { path = "crates/zc-core" }
-zc-common = { path = "crates/zc-common" }
-zc-tui = { path = "crates/zc-tui" }
+zc-asset = { version = "0.0.2", path = "crates/zc-asset" }
+zc-core = { version = "0.0.2", path = "crates/zc-core" }
+zc-common = { version = "0.0.2", path = "crates/zc-common" }
+zc-tui = { version = "0.0.2", path = "crates/zc-tui" }
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.31"

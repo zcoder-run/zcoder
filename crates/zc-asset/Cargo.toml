@@ -1,6 +1,6 @@
 [package]
 name = "zc-asset"
-version = "0.0.2-WIP"
+version = "0.0.2"
 description = "Embedded assets for zcoder"
 edition = "2024"
 license = "MIT OR Apache-2.0"
