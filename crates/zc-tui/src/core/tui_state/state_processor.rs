@@ -40,9 +40,7 @@ impl StateProcessor {
 		cost: Option<f64>,
 		tokens: (Option<u32>, Option<u32>, Option<u32>),
 	) {
-		let mut info = AiWorkInfo::new(false)
-			.with_cost(cost)
-			.with_tokens(tokens.0, tokens.1, tokens.2);
+		let mut info = AiWorkInfo::new(false).with_cost(cost).with_tokens(tokens.0, tokens.1, tokens.2);
 		if let Some(m) = model {
 			info = info.with_model(m);
 		}

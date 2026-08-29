@@ -5,8 +5,8 @@
 mod error;
 
 pub use error::{Error, Result};
-use std::path::Path;
 use std::io::{Cursor, Read};
+use std::path::Path;
 use zip::ZipArchive;
 
 // endregion: --- Modules
@@ -170,9 +170,7 @@ mod tests {
 	#[test]
 	fn test_asset_update_zcoder_project() -> Result<()> {
 		// -- Setup & Fixtures
-		let nanos = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)?
-			.as_nanos();
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
 		let temp_dir = std::env::temp_dir().join(format!("zc_asset_test_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 

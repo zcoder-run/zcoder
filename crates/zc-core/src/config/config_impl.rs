@@ -268,9 +268,7 @@ impl From<ConfigInner> for ConfigToml {
 		let workspace = inner.workspace_working_dir.map(|p| WorkspaceToml {
 			working_dir: Some(p.as_str().to_string()),
 		});
-		let maestro = inner.maestro_model.map(|m| MaestroToml {
-			model: Some(m),
-		});
+		let maestro = inner.maestro_model.map(|m| MaestroToml { model: Some(m) });
 		Self {
 			workspace,
 			maestro,
@@ -383,10 +381,7 @@ loop_b  = "loop_a"
 
 		// -- Check
 		assert_eq!(config.maestro_model(), "custom-model");
-		assert_eq!(
-			config.workspace_working_dir().map(|p| p.as_str()),
-			Some("./sub-crate")
-		);
+		assert_eq!(config.workspace_working_dir().map(|p| p.as_str()), Some("./sub-crate"));
 		let resolved = config.get_model("$small")?;
 		assert_eq!(resolved, "gpt-4o-mini");
 

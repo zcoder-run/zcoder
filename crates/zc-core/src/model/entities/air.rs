@@ -366,15 +366,21 @@ mod tests {
 	async fn test_model_air_bmc_list_for_run() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
-		let run1_id = RunBmc::create(mm, RunForCreate {
-			prompt: Some("run 1".to_string()),
-			answer: None,
-		})
+		let run1_id = RunBmc::create(
+			mm,
+			RunForCreate {
+				prompt: Some("run 1".to_string()),
+				answer: None,
+			},
+		)
 		.await?;
-		let run2_id = RunBmc::create(mm, RunForCreate {
-			prompt: Some("run 2".to_string()),
-			answer: None,
-		})
+		let run2_id = RunBmc::create(
+			mm,
+			RunForCreate {
+				prompt: Some("run 2".to_string()),
+				answer: None,
+			},
+		)
 		.await?;
 
 		AirBmc::create_next(mm, run1_id, air_for_create(run1_id)).await?;
