@@ -81,7 +81,7 @@ impl Executor {
 				action_rx,
 				inner: ExecutorInner {
 					status_tx,
-					genai_client: genai::Client::default(),
+					genai_client: genai::Client::new()?,
 					base_chat_req,
 					wspace_dir: config.wspace_dir,
 					base_dir: config.base_dir,
