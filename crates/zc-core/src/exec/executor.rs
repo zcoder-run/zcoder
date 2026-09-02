@@ -177,7 +177,8 @@ impl ExecutorInner {
 
 			// -- Process UDIFFX
 			let (file_changes, other_content) = udiffx::extract_file_changes(&ai_response, true)?;
-			let _change_statuses = udiffx::apply_file_changes(&base_dir, file_changes)?;
+			// TODO: need to give the custom security policy
+			let _change_statuses = udiffx::apply_file_changes(&base_dir, file_changes, None)?;
 			let raw_answer = other_content.unwrap_or_default();
 
 			// -- Process AIPROG
