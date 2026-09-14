@@ -16,10 +16,12 @@ mod common;
 mod event_base_error;
 mod event_mpsc;
 mod event_once;
+mod event_spsc;
 
 pub use common::*;
 pub use event_base_error::{EventBaseError, EventBaseResult};
 pub use event_mpsc::*;
 pub use event_once::{OnceRx, OnceTx};
+pub use event_spsc::*;
 
 // endregion: --- Modules

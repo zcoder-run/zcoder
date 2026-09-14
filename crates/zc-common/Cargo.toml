@@ -24,3 +24,6 @@ time = { workspace = true }
 time-tz = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
