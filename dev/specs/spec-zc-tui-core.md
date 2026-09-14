@@ -1,8 +1,10 @@
-# TUI Core Specification
+# zc-tui Core Specification
 
 ## Intent
 
-Define the core TUI runtime structure, app state model, app events, and event handling behavior for the interactive prompt loop.
+Define the core TUI runtime structure, app state, events, and event handling behavior for the interactive prompt loop.
+
+This is the core slice of `dev/specs/spec-zc-tui.md`. Read that file first for the crate overview and runtime flow, and `dev/specs/spec-zc-tui-view.md` for rendering.
 
 The core TUI supports:
 
@@ -21,20 +23,20 @@ Core module shape:
 
 ```text
 src/tui/core/
-  mod.rs
-  app_event_handlers.rs
-  ping_timer.rs
-  term_reader.rs
-  tui_impl.rs
-  tui_loop.rs
-  app_state/
+  mod.rs                  # core module registry and selected re-exports
+  app_event_handlers.rs   # maps terminal events and actions to state changes
+  ping_timer.rs           # optional timed redraws and transient feedback
+  term_reader.rs          # terminal input reader task
+  tui_impl.rs             # terminal setup, teardown, and task startup
+  tui_loop.rs             # event loop: draw, receive one event, handle
+  app_state/              # renderable app state and state transitions
     mod.rs
     app_state_base.rs
     state_processor.rs
-  event/
+  event/                  # app event boundary
     mod.rs
     app_event.rs
-  types/
+  types/                  # small shared TUI enums and aliases
     mod.rs
 ```
 

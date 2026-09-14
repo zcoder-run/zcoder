@@ -4,6 +4,8 @@
 
 Define the visual structure, render behavior, and view module organization for the terminal UI.
 
+This is the view slice of `dev/specs/spec-zc-tui.md`. Read that file first for the crate overview and runtime flow, and `dev/specs/spec-zc-tui-core.md` for the state and event model that the view renders.
+
 The view renders `AppState` into a terminal frame using `ratatui`. It provides:
 
 - an answer or error content area
@@ -12,23 +14,7 @@ The view renders `AppState` into a terminal frame using `ratatui`. It provides:
 - a footer with key hints
 - a compact set of shared view components, styles, and rendering helpers
 
-The scope covers only this view structure:
-
-- `src/tui/view/answer_view.rs`
-- `src/tui/view/footer_view.rs`
-- `src/tui/view/mod.rs`
-- `src/tui/view/main_view.rs`
-- `src/tui/view/prompt_view.rs`
-- `src/tui/view/status_view.rs`
-- `src/tui/view/comp/mod.rs`
-- `src/tui/view/comp/icons.rs`
-- `src/tui/view/style/mod.rs`
-- `src/tui/view/style/style_common.rs`
-- `src/tui/view/style/style_consts.rs`
-- `src/tui/view/support/mod.rs`
-- `src/tui/view/support/line_helpers.rs`
-- `src/tui/view/support/rect_ext.rs`
-- `src/tui/view/support/text_helpers.rs`
+The scope covers only the view modules shown in the module tree below.
 
 The Rust module folder names should remain singular, `style/` and `support/`, so they match normal Rust module naming.
 

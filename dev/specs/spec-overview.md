@@ -2,11 +2,19 @@
 
 ## Intent
 
-- Single entry point document for the `zcoder` architecture.
+- Single entry point document for the `zcoder` architecture. Read this first to get the overall picture.
 
-- Summarizes the Cargo workspace, crate responsibilities, dependency direction, runtime flow, event contracts, and the prompt execution pipeline.
+- Summarizes the Cargo workspace, crate responsibilities, dependency direction, runtime flow, and shared event contracts.
 
-- Complements the focused specs: `dev/specs/spec-workspace.md`, `dev/specs/spec-tui-general.md`, `dev/specs/spec-tui-core.md`, and `dev/specs/spec-tui-view.md`.
+- Then drill into the crate specific specs for detail:
+
+  - `dev/specs/spec-zcoder.md`: root binary crate, CLI parsing, startup orchestration, logging, and error conversion.
+  - `dev/specs/spec-zc-common.md`: shared pure types and small utilities.
+  - `dev/specs/spec-zc-core.md`: execution engine, config, prompts, model layer, and the AI file-change workflow.
+  - `dev/specs/spec-zc-tui.md`: terminal UI overview, module boundaries, lifecycle, and runtime flow.
+  - `dev/specs/spec-zc-tui-core.md`: TUI core runtime, events, app state, and event handling.
+  - `dev/specs/spec-zc-tui-view.md`: TUI layout, section views, styles, and render helpers.
+  - `dev/specs/spec-zc-asset.md`: embedded asset runtime and `.zcoder` workspace materialization.
 
 ## Workspace Layout
 
@@ -52,154 +60,17 @@ zc-asset  -> no domain crates
 
 - `zc-common` and `zc-asset` stay dependency light and never depend on domain crates.
 
-## Crates
+## Crate Summary
 
-### Root Binary (`zcoder`, bin `zc`)
+- `zcoder` (root bin `zc`): CLI parsing, startup orchestration, debug logging, and orchestration-level error conversion. See `spec-zcoder.md`.
 
-- Owns CLI parsing through `CliCmd` in `src/cmd.rs`: an optional `prompt` positional and an optional `--dir` flag.
+- `zc-common`: shared pure types and small utilities that cross crate boundaries. See `spec-zc-common.md`.
 
-- Owns process startup and hand-off to the TUI. It does not own executor workflow logic, AI provider calls, file change application, or TUI state and rendering.
+- `zc-core`: execution behavior, AI provider calls, config, prompts, model persistence, and file-change workflow. See `spec-zc-core.md`.
 
-- Owns debug logging setup: tracing output is written to `.zcoder/debug-log/log.txt` through a non blocking file appender.
+- `zc-tui`: terminal UI lifecycle, app state, event handling, and rendering. See `spec-zc-tui.md`, `spec-zc-tui-core.md`, and `spec-zc-tui-view.md`.
 
-- Owns only orchestration level error conversion in `src/error.rs`: `Custom`, `SimpleFs`, `ZcCore(zc_core::exec::Error)`, and `ZcTui(zc_tui::Error)`.
-
-- `src/main.rs` startup sequence:
-
-  - parse `CliCmd`
-  - resolve `wspace_dir` as the current directory
-  - build `ExecutorConfig::default().with_wspace_dir(wspace_dir)`
-  - apply `.with_base_dir(dir)` when `--dir` is given
-  - call `Executor::new(config)`, which returns `(Executor, ExecCmdTx, ExecEventRx)`
-  - spawn the executor task with `tokio::spawn(executor.start())`
-  - run `zc_tui::start_tui(executor_tx, status_rx, cli_cmd.prompt).await`
-
-### zc-common
-
-- Owns shared pure types and small utilities that cross crate boundaries.
-
-- Modules:
-
-  - `error`: local `Error` and `Result`, scoped to this crate only
-  - `event_base`: bounded mpsc channel primitives, `MpscTx`, `MpscRx`, and `new_mpsc_bounded(name, capacity)`
-  - `time`: time helpers such as `now_micro()`
-  - `cache`: file cache helpers such as `save_file_cache(name, content)`
-  - `yaml`: content conversion helpers such as `json_to_yaml_string`
-
-- Must not own the workspace wide error type, executor behavior, TUI behavior, or application services.
-
-### zc-asset
-
-- Owns the embedded asset runtime used to materialize the `.zcoder` workspace directory.
-
-- Embeds the asset archive at compile time through `ASSETS_ZIP`, sourced from the `ASSETS_ZIP` environment variable with `include_bytes!`.
-
-- Public API:
-
-  - `extract_asset(path)` and `extract_asset_str(path)`
-  - `extract_zfile(path)` returning `ZFile { path, content }`
-  - `list_asset_paths(prefix)`
-  - `update_zcoder_project(project_dir)`
-
-- `update_zcoder_project` creates `.zcoder/` in the target workspace and writes only missing assets, so user edits are preserved.
-
-- Has no dependency on other domain crates.
-
-### zc-core
-
-- Owns execution behavior: AI provider calls, workspace context, file change extraction and application, and Lua script execution.
-
-- Module tree:
-
-```text
-crates/zc-core/src/
-  lib.rs               # module registry, re-exports Config/ConfigManager/Db
-  derive_aliases.rs    # internal derive alias helpers
-  config/
-    config_impl.rs     # Config and ConfigInner
-    manager.rs         # ConfigManager, file loading and hot reload
-    error.rs
-  exec/
-    exec_event.rs      # ExecCmd, ExecEvent, and channel aliases
-    executor.rs        # Executor, ExecutorConfig, run pipeline
-    air_exec.rs        # provider call helper, exec_air_chat
-    error.rs
-  model/
-    model_manager.rs   # process wide ModelManager singleton
-    db.rs              # sqlite access
-    bus.rs             # ModelEvent publication
-    entities/          # air, common, and run entities with Bmc accessors
-    types.rs           # Id, EpochUs, and shared model types
-    support/
-  prompts/
-    prompts_maestro.rs # system prompt composition
-```
-
-- `config`:
-
-  - `Config` is a cheap, cloneable handle over `Arc<ConfigInner>` with builder style `with_*` and `append_*` helpers.
-  - `ConfigManager` loads `.zcoder/config.toml`, supports `refresh_if_modified()` hot reload, and exposes `get_config()`.
-  - The default config defines `[workspace] working_dir`, `[maestro] model`, `[model_sizes]`, and `[model_aliases]`.
-  - `get_model(ref_name)` resolves size presets such as `$small`, alias chains, and reasoning suffixes such as `-low`, `-high`, and `-max`, with cycle detection.
-
-- `prompts`:
-
-  - `maestro_entry_system(script_engine)` generates the system prompt.
-  - The prompt combines the UDIFFX file change instructions with the generated AIPROG Lua API documentation.
-  - The generated system prompt is cached for inspection.
-
-- `exec`:
-
-  - `Executor::new(config)` creates the command and event channels, syncs workspace assets, loads config, builds the AIPROG registry and script engine, composes the system prompt, and builds the base `ChatRequest`.
-  - `Executor::start()` consumes `ExecCmd` values until the command channel closes.
-  - `ExecutorConfig` carries `wspace_dir`, an optional `base_dir`, and an optional explicit `model`.
-
-- `model`:
-
-  - `ModelManager` is a `OnceLock` singleton providing the shared SQLite `Db`.
-  - Entities expose `ForCreate` and `ForUpdate` types with `*Bmc` accessors, such as `RunBmc` and `AirBmc`.
-  - `ModelEvent` values are published through the model bus so the TUI can react to entity changes without polling.
-  - `trim()` deletes run rows and is designed to be called at the start of a run; `db_size()` reports database size.
-
-### zc-tui
-
-- Owns the terminal UI lifecycle, app state, event handling, and rendering.
-
-- Module tree:
-
-```text
-crates/zc-tui/src/
-  lib.rs
-  error.rs
-  core/
-    tui_impl.rs           # terminal setup, channel wiring, task startup
-    tui_loop.rs           # draw then handle events
-    tui_event_handlers.rs # terminal, action, exec, and model event handling
-    event.rs              # TuiEvent and AppActionEvent
-    debouncer.rs          # coalescing of bursty events
-    term_reader.rs        # terminal input task
-    ping_timer.rs         # periodic tick task
-    model_loop.rs         # model bus to TuiEvent::Model forwarder
-    sys_state.rs          # process and database metrics snapshots
-    tui_state/            # TuiState and StateProcessor
-    types.rs              # shared TUI enums such as scroll identifiers
-  view/
-    main_view.rs          # full screen layout
-    answer_view.rs        # answer or error content area
-    status_view.rs        # status line
-    prompt_view.rs        # prompt input area
-    footer_view.rs        # key hints
-    style.rs              # shared style constants and helpers
-    tblock.rs             # shared block helpers
-```
-
-- `start_tui(executor_tx, exec_rx, initial_prompt)` is the only public entry point.
-
-- Terminal lifecycle: `ratatui::init()`, mouse capture, `terminal.clear()`, then `ratatui::restore()` and mouse capture release after the loop exits.
-
-- The UI loop draws before handling each event so every applied event becomes visible on the next iteration.
-
-- The TUI does not perform long running work. It sends typed `ExecCmd` values and reacts to `ExecEvent` and `ModelEvent` values.
+- `zc-asset`: embedded asset runtime used to materialize the `.zcoder` workspace. See `spec-zc-asset.md`.
 
 ## Event Contracts
 
