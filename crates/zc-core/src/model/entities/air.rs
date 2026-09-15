@@ -2,7 +2,7 @@
 
 use crate::model::support::prep_fields::prep_fields_for_create;
 use crate::model::support::{self, DbBmc};
-use crate::model::{EntityAction, EntityType, EpochUs, Id, ModelEvent, ModelManager, RelIds, Result, get_model_bus};
+use crate::model::{EntityAction, EntityType, EpochUs, Id, ModelChangeEvent, ModelManager, RelIds, Result, get_model_bus};
 use modql::SqliteFromRow;
 use modql::field::{Fields, HasSqliteFields, SqliteField};
 use modql::filter::ListOptions;
@@ -169,7 +169,7 @@ impl AirBmc {
 			.await?;
 
 		// Publish Model Event
-		get_model_bus().publish(ModelEvent::new(
+		get_model_bus().publish(ModelChangeEvent::new(
 			Self::ENTITY_TYPE,
 			EntityAction::Created,
 			Some(id),

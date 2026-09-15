@@ -5,9 +5,9 @@ use std::sync::Arc;
 // region:    --- Types
 
 #[derive(Debug, Clone, Deref)]
-pub struct ModelEvent(Arc<ModelEventData>);
+pub struct ModelChangeEvent(Arc<ModelEventData>);
 
-impl ModelEvent {
+impl ModelChangeEvent {
 	pub fn new(entity: EntityType, action: EntityAction, id: Option<Id>, rel_ids: RelIds) -> Self {
 		Self(Arc::new(ModelEventData {
 			entity,

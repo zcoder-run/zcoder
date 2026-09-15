@@ -1,0 +1,30 @@
+[package]
+name = "zc-base"
+version = "0.0.2"
+description = "In-process server boundary for zcoder"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+categories = ["development-tools"]
+keywords = ["coding-harness", "coding-ai"]
+authors = ["Jeremy Chone"]
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
+
+[lib]
+doctest = false
+
+[lints.rust]
+unsafe_code = "forbid"
+# unused = { level = "allow", priority = -1 } # For exploratory dev.
+# missing_docs = "warn"
+
+[dependencies]
+# -- Sub Crates
+zc-core = { workspace = true }
+zc-router = { workspace = true }
+# -- Tracing
+tracing = { workspace = true }
+# -- Async
+tokio = { workspace = true }
+# -- FS
+simple-fs = { workspace = true }

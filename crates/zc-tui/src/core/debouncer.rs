@@ -91,7 +91,7 @@ mod tests {
 	use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 	use zc_common::event_base::new_mpsc_bounded;
 	use zc_core::exec::ExecEvent;
-	use zc_core::model::{EntityAction, ModelEvent, RelIds};
+	use zc_core::model::{EntityAction, ModelChangeEvent, RelIds};
 
 	#[test]
 	fn test_debouncer_tick_coalescing() -> Result<()> {
@@ -151,13 +151,13 @@ mod tests {
 	fn test_debouncer_redraw_and_model_deduplication() -> Result<()> {
 		// -- Setup & Fixtures
 		let test_id = Id::default();
-		let model1 = TuiEvent::Model(ModelEvent::new(
+		let model1 = TuiEvent::Model(ModelChangeEvent::new(
 			EntityType::Run,
 			EntityAction::Updated,
 			Some(test_id),
 			RelIds::default(),
 		));
-		let model2 = TuiEvent::Model(ModelEvent::new(
+		let model2 = TuiEvent::Model(ModelChangeEvent::new(
 			EntityType::Run,
 			EntityAction::Updated,
 			Some(test_id),

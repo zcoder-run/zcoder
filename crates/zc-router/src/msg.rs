@@ -1,4 +1,6 @@
 use crate::exec::ExecCmd;
+use crate::exec_event::ExecEvent;
+use crate::model_change::ModelChangeEvent;
 use crate::model_rpc::ModelRpcCmd;
 use std::sync::atomic::{AtomicU64, Ordering};
 use zc_common::MsgId;
@@ -18,7 +20,9 @@ pub struct CoreMsg {
 #[derive(Debug)]
 pub enum CoreMsgData {
 	ModelRpc(ModelRpcCmd),
+	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
+	ExecEvent(ExecEvent),
 }
 
 // endregion: --- Types

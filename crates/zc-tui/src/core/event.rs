@@ -1,7 +1,7 @@
 use crossterm::event::Event;
 use zc_common::event_base::{MpscRx, MpscTx};
 use zc_core::exec::ExecEvent;
-use zc_core::model::ModelEvent;
+use zc_core::model::ModelChangeEvent;
 
 // region:    --- Tui Event
 
@@ -13,7 +13,7 @@ pub enum TuiEvent {
 	Term(Event),
 	Action(AppActionEvent),
 	Exec(ExecEvent),
-	Model(ModelEvent),
+	Model(ModelChangeEvent),
 	Tick(i64),
 	#[allow(unused)]
 	DoRedraw,

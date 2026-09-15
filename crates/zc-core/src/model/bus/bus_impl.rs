@@ -1,4 +1,4 @@
-use crate::model::ModelEvent;
+use crate::model::ModelChangeEvent;
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
 
@@ -11,8 +11,8 @@ pub fn get_model_bus() -> &'static ModelBus {
 
 #[derive(Debug)]
 pub struct ModelBus {
-	_rx: broadcast::Receiver<ModelEvent>,
-	tx: broadcast::Sender<ModelEvent>,
+	_rx: broadcast::Receiver<ModelChangeEvent>,
+	tx: broadcast::Sender<ModelChangeEvent>,
 }
 
 impl ModelBus {
@@ -23,11 +23,11 @@ impl ModelBus {
 }
 
 impl ModelBus {
-	pub fn subscribe(&self) -> broadcast::Receiver<ModelEvent> {
+	pub fn subscribe(&self) -> broadcast::Receiver<ModelChangeEvent> {
 		self.tx.subscribe()
 	}
 
-	pub fn publish(&self, event: ModelEvent) -> usize {
+	pub fn publish(&self, event: ModelChangeEvent) -> usize {
 		self.tx.send(event).unwrap_or(0)
 	}
 

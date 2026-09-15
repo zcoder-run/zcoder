@@ -7,8 +7,8 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKin
 use ratatui::layout::Position;
 use tracing::debug;
 use zc_core::exec::{ExecCmd, ExecEvent};
-use zc_core::model::{AirBmc, ModelEvent, RunBmc, get_model_manager};
-use zc_router::{CoreMsg, CoreMsgData, CoreMsgTx};
+use zc_core::model::{Air, ModelChangeEvent};
+use zc_router::{CoreMsg, CoreMsgData, CoreMsgTx, air_get, run_get};
 
 /// return `true` if needs quit
 pub async fn handle_tui_event(
@@ -31,12 +31,12 @@ pub async fn handle_tui_event(
 		}
 
 		TuiEvent::Exec(status) => {
-			handle_exec_status(state, status).await;
+			handle_exec_status(state, core_msg_tx, status).await;
 			false
 		}
 
 		TuiEvent::Model(model_event) => {
-			handle_model_event(state, model_event).await?;
+			handle_model_event(state, core_msg_tx, model_event).await?;
 			false
 		}
 
@@ -122,7 +122,7 @@ pub async fn handle_app_action(state: &mut TuiState, core_msg_tx: &CoreMsgTx, ac
 	}
 }
 
-pub async fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
+pub async fn handle_exec_status(state: &mut TuiState, core_msg_tx: &CoreMsgTx, status: ExecEvent) {
 	match status {
 		ExecEvent::RunStart(id) => {
 			StateProcessor::apply_run_start(state);
@@ -133,8 +133,7 @@ pub async fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 		}
 		ExecEvent::RunError(id) => {
 			let mut err_msg = "Error".to_string();
-			if let Ok(mm) = get_model_manager()
-				&& let Ok(run) = RunBmc::get(mm, id).await
+			if let Ok(Some(run)) = run_get(core_msg_tx, id).await
 				&& let Some(err) = run.error
 			{
 				err_msg = err;
@@ -144,49 +143,57 @@ pub async fn handle_exec_status(state: &mut TuiState, status: ExecEvent) {
 	}
 }
 
-pub async fn handle_model_event(state: &mut TuiState, model_event: ModelEvent) -> Result<()> {
-	match model_event.entity {
-		zc_core::model::EntityType::Run => {
-			let mm = get_model_manager()?;
-			if let Some(run_id) = model_event.id
-				&& let Ok(run) = RunBmc::get(mm, run_id).await
-			{
-				if let Some(prompt) = run.prompt {
-					state.set_last_prompt(Some(prompt));
-				}
-				state.set_last_answer(run.answer);
-				if let Some(error) = run.error {
-					state.set_last_error(Some(error));
-				}
-			} else {
-				debug!("Error while model event (tui)")
+pub async fn handle_model_event(
+	state: &mut TuiState,
+	core_msg_tx: &CoreMsgTx,
+	model_event: ModelChangeEvent,
+) -> Result<()> {
+	if model_event.entity == zc_core::model::EntityType::Run {
+		if let Some(run_id) = model_event.id
+			&& let Ok(Some(run)) = run_get(core_msg_tx, run_id).await
+		{
+			if let Some(prompt) = run.prompt {
+				state.set_last_prompt(Some(prompt));
 			}
+			state.set_last_answer(run.answer);
+			if let Some(error) = run.error {
+				state.set_last_error(Some(error));
+			}
+		} else {
+			debug!("Error while model event (tui)")
 		}
-		zc_core::model::EntityType::Aixc => {
-			let mm = get_model_manager()?;
-			if let Some(air_id) = model_event.id
-				&& let Ok(air) = AirBmc::get(mm, air_id).await
-			{
-				let model = air.model_ov.or(air.model_upstream);
-				let start_us = air.ai_start.or(air.start).unwrap_or(air.ctime).as_i64();
-				let duration_us = air.ai_end.or(air.end).map(|end| (end.as_i64() - start_us).max(0));
-				let cost = air.cost;
-				let tokens = (
-					air.token_in.map(|v| v as u32),
-					air.token_out.map(|v| v as u32),
-					air.token_reason.map(|v| v as u32),
-				);
-
-				if air.end.is_some() || air.ai_end.is_some() || air.end_state.is_some() {
-					StateProcessor::apply_ai_done(state, model, duration_us, cost, tokens);
-				} else {
-					StateProcessor::apply_ai_start(state, model, start_us);
-				}
-			}
+	} else if model_event.entity == zc_core::model::EntityType::Aixc {
+		if let Some(air_id) = model_event.id
+			&& let Ok(Some(air)) = air_get(core_msg_tx, air_id).await
+		{
+			apply_air_state(state, &air);
+		} else {
+			debug!("Error while air model event (tui)")
 		}
 	}
 	Ok(())
 }
+
+// region:    --- Support
+
+/// Applies an Air row change to the TUI state by projecting it into the AI work
+/// started or done phase.
+fn apply_air_state(state: &mut TuiState, air: &Air) {
+	let model = air.model_ov.clone().or(air.model_upstream.clone());
+	let start_us = air.ai_start.or(air.start).unwrap_or(air.ctime).as_i64();
+
+	if air.end.is_some() || air.ai_end.is_some() || air.end_state.is_some() {
+		let duration_us = air.ai_end.or(air.end).map(|end| (end.as_i64() - start_us).max(0));
+		let token_in = air.token_in.map(|v| v as u32);
+		let token_out = air.token_out.map(|v| v as u32);
+		let token_reason = air.token_reason.map(|v| v as u32);
+		StateProcessor::apply_ai_done(state, model, duration_us, air.cost, (token_in, token_out, token_reason));
+	} else {
+		StateProcessor::apply_ai_start(state, model, start_us);
+	}
+}
+
+// endregion: --- Support
 
 // region:    --- Tests
 
@@ -197,6 +204,8 @@ mod tests {
 	use super::*;
 	use crossterm::event::{KeyEvent, KeyEventState};
 	use zc_common::event_base::new_mpsc_bounded;
+	use zc_core::model::{AirBmc, RunBmc, get_model_manager};
+	use zc_router::run_router;
 
 	#[tokio::test]
 	async fn test_core_tui_event_handlers_f2_toggle() -> Result<()> {
@@ -244,7 +253,7 @@ mod tests {
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
 		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
 
-		let model_event = TuiEvent::Model(zc_core::model::ModelEvent::new(
+		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Run,
 			zc_core::model::EntityAction::Created,
 			None,
@@ -269,6 +278,10 @@ mod tests {
 		state.set_waiting(true);
 		state.set_status("Sending to AI...".to_string());
 
+		let (core_msg_tx, core_msg_rx) = new_mpsc_bounded("test_core_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		tokio::spawn(run_router(core_msg_rx, exec_cmd_tx));
+
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
 			mm,
@@ -289,7 +302,7 @@ mod tests {
 		.await?;
 
 		// -- Exec
-		handle_exec_status(&mut state, ExecEvent::RunError(run_id)).await;
+		handle_exec_status(&mut state, &core_msg_tx, ExecEvent::RunError(run_id)).await;
 
 		// -- Check
 		assert!(!state.is_waiting());
@@ -304,7 +317,9 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
+		let (core_msg_tx, core_msg_rx) = new_mpsc_bounded("test_core_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		tokio::spawn(run_router(core_msg_rx, exec_cmd_tx));
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -325,7 +340,7 @@ mod tests {
 		)
 		.await?;
 
-		let model_event = TuiEvent::Model(zc_core::model::ModelEvent::new(
+		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Run,
 			zc_core::model::EntityAction::Updated,
 			Some(run_id),
@@ -347,7 +362,10 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
+		let (core_msg_tx, core_msg_rx) = new_mpsc_bounded("test_core_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		tokio::spawn(run_router(core_msg_rx, exec_cmd_tx));
+
 		let mm = get_model_manager()?;
 
 		let run_id = RunBmc::create(
@@ -382,14 +400,16 @@ mod tests {
 		};
 		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
-		// -- Exec: ModelEvent for Aixc Created (In Progress)
-		let model_event_start = TuiEvent::Model(zc_core::model::ModelEvent::new(
+		// -- Exec: Aixc model change (In Progress)
+		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Created,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id) },
+			zc_core::model::RelIds {
+				run_id: Some(run_id),
+			},
 		));
-		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event_start).await?;
+		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event).await?;
 
 		// -- Check: AI work info running
 		let info = state.ai_work_info().ok_or("should have ai work info")?;
@@ -416,14 +436,16 @@ mod tests {
 		)
 		.await?;
 
-		// -- Exec: ModelEvent for Aixc Updated (Done)
-		let model_event_done = TuiEvent::Model(zc_core::model::ModelEvent::new(
+		// -- Exec: Aixc model change (Done)
+		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Updated,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id) },
+			zc_core::model::RelIds {
+				run_id: Some(run_id),
+			},
 		));
-		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event_done).await?;
+		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event).await?;
 
 		// -- Check: AI work info completed with token counts, duration, and cost
 		let info = state.ai_work_info().ok_or("should have ai work info")?;

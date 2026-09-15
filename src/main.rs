@@ -6,8 +6,7 @@ use clap::Parser as _;
 pub use error::{Error, Result};
 use tracing_appender::rolling::never;
 use tracing_subscriber::EnvFilter;
-use zc_core::exec::{Executor, ExecutorConfig};
-use zc_router::{new_core_msg_channel, run_router};
+use zc_base::{ZcBase, ZcBaseConfig};
 
 const DEBUG_LOG: bool = true;
 
@@ -42,25 +41,17 @@ async fn main() -> Result<()> {
 	let cli_cmd = CliCmd::parse();
 	let wspace_dir = simple_fs::current_dir()?;
 
-	// -- Executor setup
-	let mut executor_config = ExecutorConfig::default().with_wspace_dir(wspace_dir);
+	// -- zc-base setup (owns Core initialization and the router loop)
+	let mut base_config = ZcBaseConfig::default().with_wspace_dir(wspace_dir);
 	if let Some(dir) = cli_cmd.dir {
-		executor_config = executor_config.with_base_dir(dir);
+		base_config = base_config.with_base_dir(dir);
 	}
-	let (executor, exec_cmd_tx, status_rx) = Executor::new(executor_config)?;
-
-	tokio::spawn(async move { executor.start().await });
-
-	// -- Router setup
-	let (core_msg_tx, core_msg_rx) = new_core_msg_channel();
-	tokio::spawn(async move {
-		if let Err(err) = run_router(core_msg_rx, exec_cmd_tx).await {
-			tracing::warn!("router loop ended with error: {err:?}");
-		}
-	});
+	let zc_base = ZcBase::start(base_config)?;
 
 	// -- Running Tui application
-	zc_tui::start_tui(core_msg_tx, status_rx, cli_cmd.prompt).await?;
+	let core_msg_tx = zc_base.core_msg_tx();
+	let exec_event_rx = zc_base.exec_event_rx();
+	zc_tui::start_tui(core_msg_tx, exec_event_rx, cli_cmd.prompt).await?;
 
 	Ok(())
 }
