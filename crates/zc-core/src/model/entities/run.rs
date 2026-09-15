@@ -49,6 +49,9 @@ pub enum RunEndState {
 	Cancelled,
 }
 
+/// List options for querying runs.
+pub type ListRunOptions = ListOptions;
+
 // endregion: --- Types
 
 // region:    --- Bmc

@@ -7,6 +7,7 @@ pub use error::{Error, Result};
 use tracing_appender::rolling::never;
 use tracing_subscriber::EnvFilter;
 use zc_core::exec::{Executor, ExecutorConfig};
+use zc_router::{new_core_msg_channel, run_router};
 
 const DEBUG_LOG: bool = true;
 
@@ -46,12 +47,20 @@ async fn main() -> Result<()> {
 	if let Some(dir) = cli_cmd.dir {
 		executor_config = executor_config.with_base_dir(dir);
 	}
-	let (executor, executor_tx, status_rx) = Executor::new(executor_config)?;
+	let (executor, exec_cmd_tx, status_rx) = Executor::new(executor_config)?;
 
 	tokio::spawn(async move { executor.start().await });
 
+	// -- Router setup
+	let (core_msg_tx, core_msg_rx) = new_core_msg_channel();
+	tokio::spawn(async move {
+		if let Err(err) = run_router(core_msg_rx, exec_cmd_tx).await {
+			tracing::warn!("router loop ended with error: {err:?}");
+		}
+	});
+
 	// -- Running Tui application
-	zc_tui::start_tui(executor_tx, status_rx, cli_cmd.prompt).await?;
+	zc_tui::start_tui(core_msg_tx, status_rx, cli_cmd.prompt).await?;
 
 	Ok(())
 }

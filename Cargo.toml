@@ -31,6 +31,7 @@ members = [
     "crates/zc-core",
     "crates/zc-common",
     "crates/zc-tui",
+    "crates/zc-router",
 ]
 resolver = "3"
 
@@ -38,6 +39,7 @@ resolver = "3"
 [dependencies]
 # -- Sub Crates
 zc-core = { workspace = true }
+zc-router = { workspace = true }
 zc-tui = { workspace = true }
 # -- Tracing
 tracing = { workspace = true }
@@ -57,6 +59,7 @@ derive_more = { workspace = true }
 zc-asset = { version = "0.0.2", path = "crates/zc-asset" }
 zc-core = { version = "0.0.2", path = "crates/zc-core" }
 zc-common = { version = "0.0.2", path = "crates/zc-common" }
+zc-router = { version = "0.0.2", path = "crates/zc-router" }
 zc-tui = { version = "0.0.2", path = "crates/zc-tui" }
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }

@@ -6,9 +6,10 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
-use zc_core::exec::{ExecCmdTx, ExecEventRx};
+use zc_core::exec::ExecEventRx;
+use zc_router::CoreMsgTx;
 
-pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial_prompt: Option<String>) -> Result<()> {
+pub async fn start_tui(core_msg_tx: CoreMsgTx, mut exec_rx: ExecEventRx, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
 	let mut terminal = ratatui::init();
 	execute!(stdout(), EnableMouseCapture)?;
@@ -38,7 +39,7 @@ pub async fn start_tui(executor_tx: ExecCmdTx, mut exec_rx: ExecEventRx, initial
 	let ping_tx = ping_timer::start_ping_timer(tui_tx.clone())?;
 
 	// -- Start TUI Loop
-	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, ping_tx, executor_tx, initial_prompt).await;
+	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, ping_tx, core_msg_tx, initial_prompt).await;
 
 	// -- Restore Terminal
 	ratatui::restore();

@@ -1,0 +1,28 @@
+[package]
+name = "zc-router"
+version = "0.0.2"
+description = "Core messaging contract and routing for zcoder"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+categories = ["development-tools"]
+keywords = ["coding-harness", "coding-ai"]
+authors = ["Jeremy Chone"]
+homepage = "https://github.com/zcoder-run/zcoder"
+repository = "https://github.com/zcoder-run/zcoder"
+
+[lib]
+doctest = false
+
+[lints.rust]
+unsafe_code = "forbid"
+# unused = { level = "allow", priority = -1 } # For exploratory dev.
+# missing_docs = "warn"
+
+[dependencies]
+# -- Sub Crates
+zc-core = { workspace = true }
+zc-common = { workspace = true }
+# -- Tracing
+tracing = { workspace = true }
+# -- Others
+derive_more = { workspace = true }

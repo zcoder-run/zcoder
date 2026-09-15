@@ -114,6 +114,9 @@ pub enum AirEndState {
 	Cancelled,
 }
 
+/// List options for querying AI requests.
+pub type ListAirOptions = ListOptions;
+
 // endregion: --- Types
 
 // region:    --- Bmc

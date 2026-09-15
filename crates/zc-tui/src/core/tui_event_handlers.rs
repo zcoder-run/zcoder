@@ -6,14 +6,15 @@ use crate::core::types::ScrollIden;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::Position;
 use tracing::debug;
-use zc_core::exec::{ExecCmd, ExecCmdTx, ExecEvent};
+use zc_core::exec::{ExecCmd, ExecEvent};
 use zc_core::model::{AirBmc, ModelEvent, RunBmc, get_model_manager};
+use zc_router::{CoreMsg, CoreMsgData, CoreMsgTx};
 
 /// return `true` if needs quit
 pub async fn handle_tui_event(
 	state: &mut TuiState,
 	tui_tx: &TuiTx,
-	executor_tx: &ExecCmdTx,
+	core_msg_tx: &CoreMsgTx,
 	app_event: TuiEvent,
 ) -> Result<bool> {
 	let should_quit = match app_event {
@@ -23,7 +24,7 @@ pub async fn handle_tui_event(
 		}
 
 		TuiEvent::Action(action) => {
-			if handle_app_action(state, executor_tx, action).await? {
+			if handle_app_action(state, core_msg_tx, action).await? {
 				return Ok(true);
 			}
 			false
@@ -109,12 +110,13 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 	}
 }
 
-pub async fn handle_app_action(state: &mut TuiState, executor_tx: &ExecCmdTx, action: AppActionEvent) -> Result<bool> {
+pub async fn handle_app_action(state: &mut TuiState, core_msg_tx: &CoreMsgTx, action: AppActionEvent) -> Result<bool> {
 	match action {
 		AppActionEvent::Quit => Ok(true),
 		AppActionEvent::RunPrompt(prompt) => {
 			StateProcessor::start_prompt_run(state);
-			executor_tx.send(ExecCmd::RunPrompt(prompt)).await?;
+			let msg = CoreMsg::new(CoreMsgData::Exec(ExecCmd::RunPrompt(prompt)));
+			core_msg_tx.send(msg).await?;
 			Ok(false)
 		}
 	}
@@ -201,7 +203,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
-		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
 
 		let f2_event = TuiEvent::Term(Event::Key(KeyEvent {
 			code: KeyCode::F(2),
@@ -212,7 +214,7 @@ mod tests {
 
 		// -- Exec
 		assert!(!state.show_sys_states());
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, f2_event.clone()).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &core_msg_tx, f2_event.clone()).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -223,7 +225,7 @@ mod tests {
 		assert!(matches!(received, TuiEvent::DoRedraw));
 
 		// -- Exec (Toggle back)
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, f2_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &core_msg_tx, f2_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -240,7 +242,7 @@ mod tests {
 		let mut state = TuiState::new(None);
 		state.set_show_sys_states(true);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
 
 		let model_event = TuiEvent::Model(zc_core::model::ModelEvent::new(
 			zc_core::model::EntityType::Run,
@@ -250,7 +252,7 @@ mod tests {
 		));
 
 		// -- Exec
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -302,7 +304,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -331,7 +333,7 @@ mod tests {
 		));
 
 		// -- Exec
-		let quit = handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -345,7 +347,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (exec_tx, _) = new_mpsc_bounded("test_exec", 10)?;
+		let (core_msg_tx, _) = new_mpsc_bounded("test_core_msg", 10)?;
 		let mm = get_model_manager()?;
 
 		let run_id = RunBmc::create(
@@ -387,7 +389,7 @@ mod tests {
 			Some(air_id),
 			zc_core::model::RelIds { run_id: Some(run_id) },
 		));
-		handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event_start).await?;
+		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event_start).await?;
 
 		// -- Check: AI work info running
 		let info = state.ai_work_info().ok_or("should have ai work info")?;
@@ -395,7 +397,7 @@ mod tests {
 		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
 
 		// -- Exec: Tick
-		handle_tui_event(&mut state, &tui_tx, &exec_tx, TuiEvent::Tick(2_500_000)).await?;
+		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, TuiEvent::Tick(2_500_000)).await?;
 
 		// -- Setup: Update Aixc to Done with tokens
 		AirBmc::update(
@@ -421,7 +423,7 @@ mod tests {
 			Some(air_id),
 			zc_core::model::RelIds { run_id: Some(run_id) },
 		));
-		handle_tui_event(&mut state, &tui_tx, &exec_tx, model_event_done).await?;
+		handle_tui_event(&mut state, &tui_tx, &core_msg_tx, model_event_done).await?;
 
 		// -- Check: AI work info completed with token counts, duration, and cost
 		let info = state.ai_work_info().ok_or("should have ai work info")?;

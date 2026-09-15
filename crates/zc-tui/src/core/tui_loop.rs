@@ -5,14 +5,14 @@ use crate::core::TuiState;
 use crate::{Result, view};
 use ratatui::DefaultTerminal;
 use tracing::warn;
-use zc_core::exec::ExecCmdTx;
+use zc_router::CoreMsgTx;
 
 pub async fn run_ui_loop(
 	mut terminal: DefaultTerminal,
 	mut tui_rx: TuiRx,
 	tui_tx: TuiTx,
 	ping_tx: PingTimerTx,
-	executor_tx: ExecCmdTx,
+	core_msg_tx: CoreMsgTx,
 	initial_prompt: Option<String>,
 ) -> Result<()> {
 	let mut state = TuiState::new(initial_prompt);
@@ -25,7 +25,7 @@ pub async fn run_ui_loop(
 
 		let mut should_quit = false;
 		for event in events {
-			match handle_tui_event(&mut state, &tui_tx, &executor_tx, event).await {
+			match handle_tui_event(&mut state, &tui_tx, &core_msg_tx, event).await {
 				Ok(false) => (),
 				Ok(true) => {
 					should_quit = true;
