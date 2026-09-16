@@ -8,16 +8,25 @@ pub enum Error {
 	#[from(String, &String, &str)]
 	Custom(String),
 
-	// -- Sub Crates
-	#[from]
-	ZcCommon(zc_common::Error),
-	#[from]
-	CommonEvent(zc_common::event_base::EventBaseError),
-
-	// -- Externals
-	#[from]
-	Io(std::io::Error),
+	// -- External
+	Aiprog(String),
 }
+
+// region:    --- Froms
+
+impl From<aiprog::Error> for Error {
+	fn from(val: aiprog::Error) -> Self {
+		Self::Aiprog(val.to_string())
+	}
+}
+
+impl From<aiprog::EngineError> for Error {
+	fn from(val: aiprog::EngineError) -> Self {
+		Self::Aiprog(val.to_string())
+	}
+}
+
+// endregion: --- Froms
 
 // region:    --- Custom
 

@@ -1,21 +1,29 @@
 // region:    --- Modules
 
+pub mod config;
+pub mod exec;
 mod exec_event;
+pub mod model;
 mod model_change;
 mod model_rpc;
+mod prompts;
 
+use crate::exec::{Executor, ExecutorConfig};
 use exec_event::run_exec_event_loop;
 use model_change::run_model_change_loop;
 use model_rpc::run_model_rpc_handler;
 
 use simple_fs::SPath;
-use zc_core::exec::{ExecEventRx, Executor, ExecutorConfig};
+use zc_core::exec::ExecEventRx;
 use zc_router::{
 	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
 	new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
 };
 
 // endregion: --- Modules
+
+pub use config::{Config, ConfigManager};
+pub use model::Db;
 
 // region:    --- Config
 
@@ -75,7 +83,7 @@ impl ZcBaseConfig {
 /// Shared by the future server entry (`ZcBase::start`) and the temporary
 /// in-process stand-in (`InProcBase::start`) so both start the base role the
 /// same way. Must be called from within a Tokio runtime.
-fn start_base_core(config: ZcBaseConfig) -> zc_core::exec::Result<(RouterMsgTx, ExecEventRx)> {
+fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, ExecEventRx)> {
 	// -- Core initialization
 	let (executor, exec_cmd_tx, exec_event_rx) = Executor::new(config.into_executor_config())?;
 	tokio::spawn(async move { executor.start().await });
@@ -116,7 +124,7 @@ impl InProcBase {
 	/// Starts the in-process base: Core initialization and the router loop.
 	///
 	/// Must be called from within a Tokio runtime.
-	pub fn start(config: ZcBaseConfig) -> zc_core::exec::Result<Self> {
+	pub fn start(config: ZcBaseConfig) -> crate::exec::Result<Self> {
 		let (router_msg_tx, exec_event_source_rx) = start_base_core(config)?;
 
 		// -- Core-facing pump loops
@@ -168,7 +176,7 @@ impl ZcBase {
 	/// Starts the base role (Core initialization and the router loop), then
 	/// returns the handles a frontend needs to reach Core. Must be called from
 	/// within a Tokio runtime.
-	pub fn start(config: ZcBaseConfig) -> zc_core::exec::Result<Self> {
+	pub fn start(config: ZcBaseConfig) -> crate::exec::Result<Self> {
 		let (router_msg_tx, exec_event_rx) = start_base_core(config)?;
 		Ok(Self {
 			router_msg_tx,

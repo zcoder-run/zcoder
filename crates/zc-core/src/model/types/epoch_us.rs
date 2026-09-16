@@ -1,5 +1,4 @@
 use crate::ScalarStruct;
-use crate::model::{Error, Result};
 use macro_rules_attribute as mra;
 
 #[mra::derive(Debug, ScalarStruct!)]
@@ -26,8 +25,8 @@ impl From<&i64> for EpochUs {
 }
 
 impl TryFrom<String> for EpochUs {
-	type Error = Error;
-	fn try_from(val: String) -> Result<EpochUs> {
+	type Error = String;
+	fn try_from(val: String) -> core::result::Result<EpochUs, Self::Error> {
 		let id = val
 			.parse()
 			.map_err(|err| format!("id should be a number was '{val}'.\nCause: {err}"))?;

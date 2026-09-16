@@ -1,8 +1,12 @@
+//! Core data types and event contracts for zcoder.
+//!
+//! This crate contains shared data structures, entity models, and event contracts.
+//! It does not perform persistence or execution. The database and execution engine
+//! are owned by `zc-base`.
+
 // region:    --- Modules
 
-pub mod config;
 mod derive_aliases;
-mod prompts;
 
 use derive_aliases::*;
 
@@ -10,6 +14,3 @@ pub mod exec;
 pub mod model;
 
 // endregion: --- Modules
-
-pub use config::{Config, ConfigManager};
-pub use model::Db;

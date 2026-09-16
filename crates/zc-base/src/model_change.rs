@@ -1,6 +1,6 @@
 // region:    --- Modules
 
-use zc_core::model::get_model_bus;
+use crate::model::get_model_bus;
 use zc_router::{ModelChangeTx, RouterMsg, RouterMsgData};
 
 // endregion: --- Modules

@@ -208,8 +208,8 @@ mod tests {
 	use crate::core::_test_support::start_router_with_stub;
 	use super::*;
 	use crossterm::event::{KeyEvent, KeyEventState};
+	use zc_base::model::{AirBmc, RunBmc, get_model_manager};
 	use zc_common::event_base::new_mpsc_bounded;
-	use zc_core::model::{AirBmc, RunBmc, get_model_manager};
 
 	#[tokio::test]
 	async fn test_core_tui_event_handlers_f2_toggle() -> Result<()> {

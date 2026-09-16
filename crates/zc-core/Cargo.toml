@@ -1,7 +1,7 @@
 [package]
 name = "zc-core"
 version = "0.0.2"
-description = "Core AI coding functionality for zcoder"
+description = "Core data types and event contracts for zcoder"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 categories = ["development-tools"]
@@ -17,14 +17,7 @@ unsafe_code = "forbid"
 
 [dependencies]
 # -- Sub Crates
-zc-asset = { workspace = true }
 zc-common = { workspace = true }
-# -- AI
-genai = { workspace = true }
-aicost = { workspace = true }
-udiffx = { workspace = true }
-markex = { workspace = true }
-aiprog = { workspace = true }
 # -- DB
 rusqlite = { workspace = true, features = ["uuid"] }
 modql = { workspace = true }
@@ -32,13 +25,10 @@ modql = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 value-ext = { workspace = true }
-toml = { workspace = true }
 # -- FS
 simple-fs = { workspace = true }
 # -- Async
 tokio = { workspace = true }
-# -- Concurrency
-arc-swap = { workspace = true }
 # -- Tracing
 tracing = { workspace = true }
 # -- Others

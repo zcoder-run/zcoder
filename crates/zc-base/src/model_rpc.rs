@@ -1,6 +1,6 @@
 // region:    --- Modules
 
-use zc_core::model::{AirBmc, ModelManager, RunBmc, get_model_manager};
+use crate::model::{AirBmc, ModelManager, RunBmc, get_model_manager};
 use zc_router::{ModelRpcCmd, ModelRpcCmdRx, ModelRpcError, ModelRpcReply, ModelRpcResult};
 
 // endregion: --- Modules
@@ -65,7 +65,7 @@ fn model_manager() -> ModelRpcResult<&'static ModelManager> {
 	get_model_manager().map_err(ModelRpcError::custom)
 }
 
-fn map_model_err(err: zc_core::model::Error) -> ModelRpcError {
+fn map_model_err(err: crate::model::Error) -> ModelRpcError {
 	ModelRpcError::custom(err.to_string())
 }
 

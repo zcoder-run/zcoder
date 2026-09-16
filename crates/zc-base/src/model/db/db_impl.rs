@@ -73,7 +73,7 @@ impl Db {
 	/// cast it to the type T
 	/// ```
 	/// # async fn doc() -> Result<(), Box<dyn std::error::Error>> {
-	/// # use zc_core::Db;
+	/// # use zc_base::Db;
 	/// let db = Db::new()?;
 	/// db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)", []).await?;
 	/// db.exec("INSERT INTO t (id, name) VALUES (42, 'foo')", []).await?;

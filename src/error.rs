@@ -13,7 +13,7 @@ pub enum Error {
 	SimpleFs(simple_fs::Error),
 
 	#[from]
-	ZcCore(zc_core::exec::Error),
+	ZcBase(zc_base::exec::Error),
 
 	#[from]
 	ZcTui(zc_tui::Error),

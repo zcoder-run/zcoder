@@ -1,5 +1,4 @@
 use crate::ScalarStruct;
-use crate::model::{Error, Result};
 use macro_rules_attribute as mra;
 use uuid::Uuid;
 
@@ -31,8 +30,8 @@ impl From<&Uuid> for Id {
 }
 
 impl TryFrom<String> for Id {
-	type Error = Error;
-	fn try_from(val: String) -> Result<Id> {
+	type Error = String;
+	fn try_from(val: String) -> core::result::Result<Id, Self::Error> {
 		let uuid =
 			Uuid::parse_str(&val).map_err(|err| format!("id should be a valid UUID, was '{val}'.\nCause: {err}"))?;
 		Ok(Id(uuid))

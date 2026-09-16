@@ -1,4 +1,4 @@
-use crate::model::EntityType;
+use zc_core::model::EntityType;
 
 pub trait DbBmc: Sized {
 	const TABLE: &'static str;

@@ -28,3 +28,6 @@ textwrap = "0.16"
 sysinfo = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
+
+[dev-dependencies]
+zc-base = { workspace = true }
