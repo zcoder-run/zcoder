@@ -35,6 +35,11 @@ pub enum ModelRpcCmd {
 		options: ListAirOptions,
 		res_tx: OnceTx<ModelRpcReply>,
 	},
+
+	// -- Db
+	DbSize {
+		res_tx: OnceTx<ModelRpcReply>,
+	},
 }
 
 /// Reply payload returned for a [`ModelRpcCmd`].
@@ -48,6 +53,7 @@ pub enum ModelRpcReply {
 	RunList(ModelRpcResult<Vec<Run>>),
 	Air(ModelRpcResult<Option<Air>>),
 	AirList(ModelRpcResult<Vec<Air>>),
+	DbSize(ModelRpcResult<i64>),
 }
 
 /// Error carried by a [`ModelRpcReply`] variant.
@@ -61,6 +67,21 @@ pub struct ModelRpcError {
 pub type ModelRpcResult<T> = core::result::Result<T, ModelRpcError>;
 
 // endregion: --- Types
+
+// region:    --- Model RPC Command Channel
+
+/// Channel carrying model RPC commands from the router to the `zc-base` handler.
+pub type ModelRpcCmdTx = zc_common::event_base::MpscTx<ModelRpcCmd>;
+pub type ModelRpcCmdRx = zc_common::event_base::MpscRx<ModelRpcCmd>;
+
+/// Creates the bounded `ModelRpcCmd` channel used to forward model RPC commands to a handler.
+pub fn new_model_rpc_cmd_channel() -> (ModelRpcCmdTx, ModelRpcCmdRx) {
+	let (tx, rx) = zc_common::event_base::new_mpsc_bounded_default("model_rpc_cmd_channel")
+		.expect("model rpc cmd channel capacity is non-zero");
+	(tx, rx)
+}
+
+// endregion: --- Model RPC Command Channel
 
 // region:    --- Client Facade
 
@@ -104,17 +125,17 @@ pub async fn air_list(router_msg_tx: &RouterMsgTx, options: ListAirOptions) -> M
 	}
 }
 
-// endregion: --- Client Facade
-
-// region:    --- Froms
-
-impl From<zc_core::model::Error> for ModelRpcError {
-	fn from(err: zc_core::model::Error) -> Self {
-		Self::custom(err.to_string())
+/// Requests the database size in bytes through the router and awaits the single-use reply.
+pub async fn db_size(router_msg_tx: &RouterMsgTx) -> ModelRpcResult<i64> {
+	let (res_tx, res_rx) = new_once("model_rpc_db_size");
+	let cmd = ModelRpcCmd::DbSize { res_tx };
+	match request(router_msg_tx, cmd, res_rx).await? {
+		ModelRpcReply::DbSize(reply) => reply,
+		_ => Err(ModelRpcError::custom("unexpected reply for db_size")),
 	}
 }
 
-// endregion: --- Froms
+// endregion: --- Client Facade
 
 // region:    --- Custom
 

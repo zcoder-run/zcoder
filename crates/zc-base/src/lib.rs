@@ -1,9 +1,21 @@
+// region:    --- Modules
+
+mod exec_event;
+mod model_change;
+mod model_rpc;
+
+use exec_event::run_exec_event_loop;
+use model_change::run_model_change_loop;
+use model_rpc::run_model_rpc_handler;
+
 use simple_fs::SPath;
 use zc_core::exec::{ExecEventRx, Executor, ExecutorConfig};
 use zc_router::{
-	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel, new_router_msg_channel,
-	run_exec_event_loop, run_model_change_loop, run_router,
+	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
+	new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
 };
+
+// endregion: --- Modules
 
 // region:    --- Config
 
@@ -68,10 +80,14 @@ fn start_base_core(config: ZcBaseConfig) -> zc_core::exec::Result<(RouterMsgTx, 
 	let (executor, exec_cmd_tx, exec_event_rx) = Executor::new(config.into_executor_config())?;
 	tokio::spawn(async move { executor.start().await });
 
+	// -- Model RPC handler
+	let (model_rpc_cmd_tx, model_rpc_cmd_rx) = new_model_rpc_cmd_channel();
+	tokio::spawn(async move { run_model_rpc_handler(model_rpc_cmd_rx).await });
+
 	// -- Router loop
 	let (router_msg_tx, router_msg_rx) = new_router_msg_channel();
 	tokio::spawn(async move {
-		if let Err(err) = run_router(router_msg_rx, exec_cmd_tx).await {
+		if let Err(err) = run_router(router_msg_rx, exec_cmd_tx, model_rpc_cmd_tx).await {
 			tracing::warn!("router loop ended with error: {err:?}");
 		}
 	});

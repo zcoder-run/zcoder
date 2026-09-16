@@ -2,7 +2,7 @@
 use super::TuiState;
 use super::tui_state_base::format_duration_us;
 use crate::view::tblock::AiWorkInfo;
-use zc_core::model::get_model_manager;
+use zc_router::{RouterMsgTx, db_size};
 
 pub struct StateProcessor;
 
@@ -78,16 +78,14 @@ impl StateProcessor {
 		state.update_elapsed_time(ts);
 	}
 
-	pub async fn process_sys_metrics(state: &mut TuiState) {
+	pub async fn process_sys_metrics(state: &mut TuiState, router_msg_tx: &RouterMsgTx) {
 		if !state.show_sys_states() {
 			return;
 		}
 
 		state.refresh_sys_state();
-		if let Ok(mm) = get_model_manager()
-			&& let Ok(db_size) = mm.db_size().await
-		{
-			state.set_db_memory(db_size.max(0) as u64);
+		if let Ok(size) = db_size(router_msg_tx).await {
+			state.set_db_memory(size.max(0) as u64);
 		}
 	}
 }
@@ -99,17 +97,24 @@ mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 	use super::*;
+	use zc_common::event_base::new_mpsc_bounded;
+
+	use crate::core::_test_support::start_router_with_stub;
 
 	#[tokio::test]
 	async fn test_state_processor_sys_metrics_when_inactive() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
+		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+
 		assert!(!state.show_sys_states());
 		assert_eq!(state.memory(), 0);
 		assert_eq!(state.db_memory(), 0);
 
 		// -- Exec
-		StateProcessor::process_sys_metrics(&mut state).await;
+		StateProcessor::process_sys_metrics(&mut state, &router_msg_tx).await;
 
 		// -- Check
 		assert_eq!(state.memory(), 0);
@@ -123,9 +128,12 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		state.set_show_sys_states(true);
+		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		// -- Exec
-		StateProcessor::process_sys_metrics(&mut state).await;
+		StateProcessor::process_sys_metrics(&mut state, &router_msg_tx).await;
 
 		// -- Check
 		assert!(state.memory() > 0);

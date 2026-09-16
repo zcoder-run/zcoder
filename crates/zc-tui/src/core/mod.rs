@@ -16,4 +16,7 @@ pub mod types;
 pub use tui_impl::start_tui;
 pub use tui_state::TuiState;
 
+#[cfg(test)]
+mod _test_support;
+
 // endregion: --- Modules

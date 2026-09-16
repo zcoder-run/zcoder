@@ -1,8 +1,7 @@
 // region:    --- Modules
 
-use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx};
+use crate::msg::{RouterMsgRx, RouterMsgTx};
 pub use zc_core::exec::ExecEvent;
-use zc_core::exec::ExecEventRx;
 
 // endregion: --- Modules
 
@@ -17,18 +16,3 @@ pub fn new_exec_event_channel() -> (RouterMsgTx, RouterMsgRx) {
 }
 
 // endregion: --- Exec Event Channel
-
-// region:    --- Exec Event Loop
-
-/// Reads run lifecycle events from the Core executor status stream and forwards
-/// each one as a `RouterMsgData::ExecEvent` on the outbound Core message channel.
-pub async fn run_exec_event_loop(mut exec_event_rx: ExecEventRx, exec_event_tx: RouterMsgTx) {
-	while let Ok(exec_event) = exec_event_rx.recv().await {
-		let msg = RouterMsg::new(RouterMsgData::ExecEvent(exec_event));
-		if exec_event_tx.send(msg).await.is_err() {
-			break;
-		}
-	}
-}
-
-// endregion: --- Exec Event Loop

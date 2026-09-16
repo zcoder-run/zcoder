@@ -1,7 +1,6 @@
-use crate::msg::{RouterMsg, RouterMsgData};
+use crate::msg::RouterMsg;
 // region:    --- Types
 pub use zc_core::model::ModelChangeEvent;
-use zc_core::model::get_model_bus;
 
 // endregion: --- Types
 
@@ -19,20 +18,3 @@ pub fn new_model_change_channel() -> (ModelChangeTx, ModelChangeRx) {
 }
 
 // endregion: --- Model Change Channel
-
-// region:    --- Model Change Loop
-
-/// Runs the model change loop, listening to the Core model bus and forwarding each
-/// change to the frontend as a `RouterMsgData::ModelChange` message.
-pub async fn run_model_change_loop(model_change_tx: ModelChangeTx) {
-	let mut model_rx = get_model_bus().subscribe();
-
-	while let Ok(event) = model_rx.recv().await {
-		let msg = RouterMsg::new(RouterMsgData::ModelChange(event));
-		if model_change_tx.send(msg).await.is_err() {
-			break;
-		}
-	}
-}
-
-// endregion: --- Model Change Loop

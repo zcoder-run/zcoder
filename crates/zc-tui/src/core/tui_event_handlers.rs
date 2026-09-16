@@ -48,7 +48,7 @@ pub async fn handle_tui_event(
 		TuiEvent::DoRedraw => false,
 	};
 
-	StateProcessor::process_sys_metrics(state).await;
+	StateProcessor::process_sys_metrics(state, router_msg_tx).await;
 
 	Ok(should_quit)
 }
@@ -205,18 +205,20 @@ fn apply_air_state(state: &mut TuiState, air: &Air) {
 mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
+	use crate::core::_test_support::start_router_with_stub;
 	use super::*;
 	use crossterm::event::{KeyEvent, KeyEventState};
 	use zc_common::event_base::new_mpsc_bounded;
 	use zc_core::model::{AirBmc, RunBmc, get_model_manager};
-	use zc_router::run_router;
 
 	#[tokio::test]
 	async fn test_core_tui_event_handlers_f2_toggle() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
-		let (router_msg_tx, _) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		let f2_event = TuiEvent::Term(Event::Key(KeyEvent {
 			code: KeyCode::F(2),
@@ -255,7 +257,9 @@ mod tests {
 		let mut state = TuiState::new(None);
 		state.set_show_sys_states(true);
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
-		let (router_msg_tx, _) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
+		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Run,
@@ -284,7 +288,7 @@ mod tests {
 
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
-		tokio::spawn(run_router(router_msg_rx, exec_cmd_tx));
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -323,7 +327,7 @@ mod tests {
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
-		tokio::spawn(run_router(router_msg_rx, exec_cmd_tx));
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -368,7 +372,7 @@ mod tests {
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
-		tokio::spawn(run_router(router_msg_rx, exec_cmd_tx));
+		start_router_with_stub(router_msg_rx, exec_cmd_tx);
 
 		let mm = get_model_manager()?;
 
