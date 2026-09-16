@@ -15,7 +15,7 @@ The TUI provides:
 - terminal initialization and restoration
 - a central app event channel
 - terminal input forwarding
-- executor status forwarding
+- model change and exec event forwarding
 - a UI loop that renders state and dispatches user actions
 - editable prompt input and prompt submission
 - quit commands
@@ -29,14 +29,19 @@ The scope covers the top-level TUI module, the core runtime modules, shared supp
 
 ## Dependency and Public API
 
-`zc-tui` depends on `zc-core` for the executor sender and executor status types, and on `zc-common` where it needs shared helpers.
+`zc-tui` depends on `zc-router` for the Core message contract (`RouterMsgTx`, `ModelChangeRx`, `RouterMsgRx`, `ModelRpcCmd`, and the model RPC client facade), on `zc-core` for the shared types and event contracts it renders (`Run`, `Air`, `ExecEvent`), and on `zc-common` where it needs shared helpers.
+
+`zc-base` is a dev-dependency only. The tests seed a run and an air through the `zc-base` owners, while production code never depends on `zc-base`.
+
+The TUI reaches persisted state only through the router contract, and only as owned data (`Run`, `Air`, model change events). It never holds a database handle, a model manager, or an entity accessor.
 
 The public entry point is the only exported TUI API:
 
 ```rust
 pub async fn start_tui(
-	executor_tx: ExecutorTx,
-	status_rx: Receiver<ExecStatusEvent>,
+	router_msg_tx: RouterMsgTx,
+	model_change_rx: ModelChangeRx,
+	exec_event_rx: RouterMsgRx,
 	initial_prompt: Option<String>,
 ) -> Result<()>;
 ```
@@ -79,11 +84,12 @@ The detailed module layout for `core/` lives in `dev/specs/spec-zc-tui-core.md`,
 Event flow:
 
 ```text
-Terminal input -> AppEvent::Term -> tui_loop
-User intent -> AppEvent::Action -> app_event_handlers/state_processor -> tui_loop
-Executor status -> AppEvent::Exec -> tui_loop
-Timer tick -> AppEvent::Tick -> tui_loop
-Redraw request -> AppEvent::DoRedraw -> tui_loop
+Terminal input -> TuiEvent::Term -> tui_loop
+User intent -> TuiEvent::Action -> app_event_handlers/state_processor -> tui_loop
+Run lifecycle -> TuiEvent::Exec -> tui_loop
+Model change -> TuiEvent::Model -> tui_loop
+Timer tick -> TuiEvent::Tick -> tui_loop
+Redraw request -> TuiEvent::DoRedraw -> tui_loop
 ```
 
 ## Core Runtime
@@ -95,7 +101,7 @@ Redraw request -> AppEvent::DoRedraw -> tui_loop
 - initialize the terminal
 - clear the initial screen
 - create typed app channel wrappers such as `AppTx`
-- forward executor status events into the app event stream
+- forward model change and exec events into the app event stream
 - start terminal reader tasks
 - start ping timer tasks only when timed refreshes are needed
 - restore the terminal before returning
@@ -192,15 +198,16 @@ The state model starts intentionally small and render-oriented. The view can der
 
 ## Events
 
-### AppEvent and AppActionEvent
+### TuiEvent and AppActionEvent
 
 `event/app_event.rs` owns the app event boundary:
 
 ```rust
-pub enum AppEvent {
+pub enum TuiEvent {
 	Term(Event),
 	Action(AppActionEvent),
-	Exec(ExecStatusEvent),
+	Exec(ExecEvent),
+	Model(ModelChangeEvent),
 	Tick,
 	DoRedraw,
 }
@@ -211,7 +218,7 @@ pub enum AppActionEvent {
 }
 ```
 
-- `AppEvent`: wraps terminal input, semantic actions, executor statuses, ticks, and redraw requests
+- `TuiEvent`: wraps terminal input, semantic actions, run lifecycle events, model change events, ticks, and redraw requests
 - `AppActionEvent`: represents user intent after raw terminal input is interpreted
 - scroll and navigation enums: represent directions and page actions as typed values when scrolling or navigation is introduced
 
@@ -240,14 +247,22 @@ pub enum AppActionEvent {
   - clears the input
   - sets `waiting` to true
   - clears `last_error`
-  - sends `ExecActionEvent::RunPrompt(prompt)` to the executor
+  - sends the run request to Core through the router message sender
 
-### Executor Status Behavior
+### Exec Event Behavior
 
-- `RunStart`: sets status to `Sending to AI...`
-- `RunEnd`: sets `waiting` to false and sets status to `Idle`
-- `RunResult(answer)`: stores the answer as `last_answer`
-- `RunError(err)`: stores the error as `last_error`
+The exec event receiver carries the run lifecycle events produced by the `zc-base` executor.
+
+- `ExecEvent::RunStart(run_id)`: sets status to `Sending to AI...` and marks the app as waiting
+- `ExecEvent::RunEnd(run_id)`: sets `waiting` to false and sets status to `Idle`
+- `ExecEvent::RunError(run_id)`: sets `waiting` to false and surfaces the failure
+
+### Model Event Behavior
+
+The model change receiver carries the persisted entity changes produced by `zc-base`.
+
+- a run change is re-read through the `run_get` RPC client and stored as the current run result
+- an air change is re-read through the `air_get` RPC client and refreshed into the work info, such as model name, elapsed time, tokens, and cost
 
 ## View
 

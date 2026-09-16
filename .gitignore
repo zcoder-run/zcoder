@@ -16,6 +16,8 @@ _*
 # Ignore all .aipack/ folder by default
 .aipack/**
 
+*.html
+
 ## Optional: uncomment to allow the the .aipack/config.toml
 # !.aipack/
 # !.aipack/config.toml

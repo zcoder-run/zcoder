@@ -4,17 +4,77 @@
 
 - Single entry point document for the `zcoder` architecture. Read this first to get the overall picture.
 
-- Summarizes the Cargo workspace, crate responsibilities, dependency direction, runtime flow, and shared event contracts.
+- Summarizes the Cargo workspace, the crate taxonomy, the dependency direction, the runtime flow, and the shared event contracts.
+
+- Also covers the root binary crate `zcoder` (bin `zc`), which used to live in its own `spec-zcoder.md`: its CLI surface, startup orchestration, debug logging, and error model are described here.
 
 - Then drill into the crate specific specs for detail:
 
-  - `dev/specs/spec-zcoder.md`: root binary crate, CLI parsing, startup orchestration, logging, and error conversion.
   - `dev/specs/spec-zc-common.md`: shared pure types and small utilities.
-  - `dev/specs/spec-zc-core.md`: execution engine, config, prompts, model layer, and the AI file-change workflow.
+  - `dev/specs/spec-zc-core.md`: shared data types and event contracts.
+  - `dev/specs/spec-zc-router.md`: Core message contract and routing.
+  - `dev/specs/spec-zc-base.md`: database, model, executor, config, prompts, and the Core-facing loops.
   - `dev/specs/spec-zc-tui.md`: terminal UI overview, module boundaries, lifecycle, and runtime flow.
   - `dev/specs/spec-zc-tui-core.md`: TUI core runtime, events, app state, and event handling.
   - `dev/specs/spec-zc-tui-view.md`: TUI layout, section views, styles, and render helpers.
   - `dev/specs/spec-zc-asset.md`: embedded asset runtime and `.zcoder` workspace materialization.
+
+## Crate Map
+
+The workspace is the root binary `zcoder` (bin `zc`) plus six library crates, arranged in four layers: entry, role, contract, and foundation. Arrows read as "depends on".
+
+```mermaid
+flowchart TD
+    Z["zcoder (bin zc)"]
+
+    T["zc-tui"]
+    B["zc-base"]
+    R["zc-router"]
+    C["zc-core"]
+    M["zc-common"]
+    A["zc-asset"]
+
+    Z --> T
+    Z --> B
+
+    T --> R
+    T --> C
+
+    B --> C
+    B --> M
+    B --> A
+
+    R --> C
+    R --> M
+
+    C --> M
+    C --> A
+```
+
+The complete dependency set:
+
+```text
+zcoder (bin zc)  --> zc-tui, zc-base, zc-core, zc-router
+
+zc-tui           --> zc-router, zc-core, zc-common   (and zc-base, dev only)
+zc-base          --> zc-router, zc-core, zc-common, zc-asset
+zc-router        --> zc-core, zc-common
+zc-core          --> zc-common
+zc-common        --> (no domain crates)
+zc-asset         --> (no domain crates)
+```
+
+## Crate Table
+
+| Crate               | Kind   | What it is for                                                                                                                              |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zcoder` (bin `zc`) | binary | CLI parsing, startup orchestration, debug logging, and orchestration-level error conversion.                                                |
+| `zc-common`         | lib    | Dependency-light shared utilities: `Id`, `MsgId`, bounded mpsc primitives, time, cache, and yaml.                                           |
+| `zc-core`           | lib    | Shared data types and event contracts only: model types, entity structs plus their derives, `ModelChangeEvent`, `ExecCmd`, and `ExecEvent`. |
+| `zc-router`         | lib    | The Core message contract and routing: `RouterMsg`/`RouterMsgData`, the model RPC contract, the channel types, and `run_router`.            |
+| `zc-base`           | lib    | The server, owning all data change, work and all.                                                                                           |
+| `zc-tui`            | lib    | Terminal UI lifecycle, app state, event handling, and rendering; reaches Core through the router.                                           |
+| `zc-asset`          | lib    | Embedded asset runtime used to materialize the `.zcoder` workspace.                                                                         |
 
 ## Workspace Layout
 
@@ -26,7 +86,9 @@ src/
   error.rs              # root crate error type
 crates/
   zc-common/            # shared pure types and small utilities
-  zc-core/              # execution engine and AI file-change workflow
+  zc-core/              # shared data types and event contracts
+  zc-router/            # Core message contract and routing
+  zc-base/              # database, model, executor, config, prompts, and Core loops
   zc-tui/               # terminal UI runtime, state, and rendering
   zc-asset/             # embedded asset runtime
 dev/specs/              # architecture and behavior specs
@@ -35,137 +97,222 @@ dev/specs/              # architecture and behavior specs
 
 ## Dependency Direction
 
-```text
-zcoder (root bin)
-  -> zc-core
-  -> zc-tui
+Critical rules:
 
-zc-core
-  -> zc-common
-  -> zc-asset
+- `zc-core` never depends on `zc-router` or `zc-base`; it stays the shared types and contracts crate.
 
-zc-tui
-  -> zc-common
-  -> zc-core
+- Only `zc-base` opens a SQLite connection or runs SQL.
 
-zc-common -> no domain crates
-zc-asset  -> no domain crates
-```
+- `zc-router` is contract and routing only, and never touches the database or the model bus.
 
-- The root binary depends only on what it wires together: `zc-core` and `zc-tui`.
+- `zc-tui` reaches persisted state only through the router contract, as owned data (`Run`, `Air`, events), never as a handle.
 
-- `zc-tui` depends on `zc-core` for the executor command sender and event receiver, and on `zc-common` for channel primitives.
+- The root binary depends only on what it wires together: `zc-base`, `zc-router`, `zc-core`, and `zc-tui`.
 
-- `zc-core` depends on `zc-common` for channel primitives, cache, time, and yaml helpers, and on `zc-asset` for workspace asset sync.
+Details:
+
+- `zc-tui` depends on `zc-router` for the Core message contract, on `zc-core` for the shared types, and on `zc-common` for channel primitives. It uses `zc-base` only as a dev-dependency, for test seeding.
+
+- `zc-base` depends on `zc-core` for the shared types and contracts, on `zc-router` for the message contract, on `zc-common` for channel primitives and utilities, and on `zc-asset` for workspace asset sync.
+
+- `zc-router` depends on `zc-core` for the shared types and on `zc-common` for channel primitives.
+
+- `zc-core` depends only on `zc-common`.
 
 - `zc-common` and `zc-asset` stay dependency light and never depend on domain crates.
 
-## Crate Summary
+## Root Binary (zcoder)
 
-- `zcoder` (root bin `zc`): CLI parsing, startup orchestration, debug logging, and orchestration-level error conversion. See `spec-zcoder.md`.
+The root binary (`zcoder`, bin `zc`) is a thin startup shell. It parses command-line input, builds the base configuration, starts the in-process base, and hands control to the TUI. It does not own executor workflow logic, AI provider calls, file-change application, or TUI state and rendering.
 
-- `zc-common`: shared pure types and small utilities that cross crate boundaries. See `spec-zc-common.md`.
+Module layout:
 
-- `zc-core`: execution behavior, AI provider calls, config, prompts, model persistence, and file-change workflow. See `spec-zc-core.md`.
+```text
+src/
+  main.rs   # startup orchestration and tracing setup
+  cmd.rs    # CLI parsing with clap
+  error.rs  # root crate Error and Result
+```
 
-- `zc-tui`: terminal UI lifecycle, app state, event handling, and rendering. See `spec-zc-tui.md`, `spec-zc-tui-core.md`, and `spec-zc-tui-view.md`.
+Responsibilities:
 
-- `zc-asset`: embedded asset runtime used to materialize the `.zcoder` workspace. See `spec-zc-asset.md`.
+- parse command-line input through `CliCmd`
+
+- derive startup configuration values such as the base directory
+
+- build `ZcBaseConfig` from the resolved workspace directory and the optional base directory
+
+- start the base role through `zc_base::InProcBase::start`
+
+- take the router message sender and the model change and exec event receivers from the base
+
+- start the terminal UI through `zc_tui::start_tui`
+
+- own only orchestration-level error conversion
+
+- own debug logging setup
+
+The root binary does not own:
+
+- executor workflow logic
+
+- AI provider calls
+
+- file loading or file-change application
+
+- terminal UI state, rendering, or event handling
+
+- shared event data definitions
+
+CLI:
+
+- `CliCmd` in `src/cmd.rs` is parsed with `clap`.
+
+- It exposes an optional `prompt` positional and an optional `--dir` flag.
+
+Dependencies:
+
+- `zc-base`: starts the base role (Core initialization and the router loop) and owns the executor error.
+
+- `zc-tui`: owns the terminal UI lifecycle and the interactive loop.
+
+- `zc-core`: shared model types and event contracts.
+
+- `zc-router`: the Core message contract used at the frontend boundary.
+
+## Startup Sequence
+
+```text
+root main
+  -> parse CLI
+  -> resolve wspace_dir as the current directory
+  -> build ZcBaseConfig::default().with_wspace_dir(wspace_dir)
+  -> apply .with_base_dir(dir) when --dir is given
+  -> InProcBase::start(config) -> inproc_base
+  -> inproc_base.router_msg_tx() -> router_msg_tx
+  -> inproc_base.into_event_rx() -> (model_change_rx, exec_event_rx)
+  -> zc_tui::start_tui(router_msg_tx, model_change_rx, exec_event_rx, cli_cmd.prompt).await
+```
+
+`InProcBase` is the temporary in-process stand-in for the future `zc base` server. It starts the same base role that `ZcBase` starts, so the later process split removes code from one place instead of untangling the UI.
 
 ## Event Contracts
 
 ```rust
 // zc-core::exec
 pub enum ExecCmd {
-	RunPrompt(String),
+    RunPrompt(String),
 }
 
 pub enum ExecEvent {
-	RunStart(Id),
-	RunEnd(Id),
-	RunError(Id),
+    RunStart(Id),
+    RunEnd(Id),
+    RunError(Id),
 }
 
-// zc-core::model
-pub struct ModelEvent {
-	entity: EntityType,   // Run, Aixc, ...
-	action: EntityAction, // Created, Updated, ...
-	id: Option<Id>,
-	rel_ids: RelIds,
+// zc-core (types and contracts)
+pub struct ModelChangeEvent {
+    entity: EntityType,   // Run, Aixc, ...
+    action: EntityAction, // Created, Updated, ...
+    id: Option<Id>,
+    rel_ids: RelIds,
 }
 
 // zc-tui::core
 pub enum TuiEvent {
-	Term(Event),
-	Action(AppActionEvent),
-	Exec(ExecEvent),
-	Model(ModelEvent),
-	Tick(i64),
-	DoRedraw,
+    Term(Event),
+    Action(AppActionEvent),
+    Exec(ExecEvent),
+    Model(ModelChangeEvent),
+    Tick(i64),
+    DoRedraw,
 }
 
 pub enum AppActionEvent {
-	Quit,
-	RunPrompt(String),
+    Quit,
+    RunPrompt(String),
 }
 ```
 
 - Executor command and event channels are aliased as `ExecCmdTx`/`ExecCmdRx` and `ExecEventTx`/`ExecEventRx`.
 
-- All UI signals share one `TuiEvent` stream so terminal input, actions, executor status, model updates, and ticks stay ordered in the UI loop.
+- Model RPC commands and replies use the `zc-router` channel types, and `zc-base` serves them through `run_model_rpc_handler`.
+
+- All UI signals share one `TuiEvent` stream so terminal input, actions, executor status, model changes, and ticks stay ordered in the UI loop.
 
 ## Runtime Flow
 
 ```text
 CLI parse (zcoder)
-  -> ExecutorConfig (wspace_dir, optional base_dir, optional model)
-  -> Executor::new -> (Executor, ExecCmdTx, ExecEventRx)
-  -> tokio::spawn(Executor::start())
-  -> zc_tui::start_tui(ExecCmdTx, ExecEventRx, initial_prompt)
-       -> tui_impl: ratatui init, TuiEvent channel, model loop, exec forwarder,
-                    terminal reader, ping timer
+  -> ZcBaseConfig (wspace_dir, optional base_dir, optional model)
+  -> InProcBase::start -> router_msg_tx, model_change_rx, exec_event_rx
+  -> zc_tui::start_tui(...)
+       -> tui_impl: ratatui init, TuiEvent channel, model event loop,
+                    exec event loop, terminal reader, ping timer
        -> tui_loop: draw -> recv TuiEvent -> debounce -> handle
 ```
 
 Action flow:
 
 ```text
-Terminal input -> TuiEvent::Term -> tui_event_handlers
-App intent     -> TuiEvent::Action -> state + ExecCmdTx -> Executor
-Executor       -> TuiEvent::Exec -> state update
+Terminal input -> TuiEvent::Term  -> tui_event_handlers
+App intent     -> TuiEvent::Action -> state + RouterMsgTx -> router -> base
+Base           -> TuiEvent::Exec  -> state update
 Model change   -> TuiEvent::Model -> state update
-Timer          -> TuiEvent::Tick -> state update
+Timer          -> TuiEvent::Tick  -> state update
 ```
 
 ## Execution Pipeline
 
-The `RunPrompt` path spans the TUI, the executor, and the model layer.
+The `RunPrompt` path spans the TUI, the router, and `zc-base`.
 
 1. The user presses `Enter` in the prompt view, and the TUI emits `AppActionEvent::RunPrompt(prompt)`.
-2. `handle_app_action` marks the state as running and sends `ExecCmd::RunPrompt(prompt)` to the executor.
-3. `handle_run_prompt` creates a `Run` row and emits `ExecEvent::RunStart(run_id)`.
+
+2. The TUI handler marks the state as running and routes the intent to `zc-base` through the router.
+
+3. `handle_run_prompt` in `zc-base` creates a `Run` row and emits `ExecEvent::RunStart(run_id)`.
+
 4. Workspace assets are re-synced and the config is hot reloaded before each run.
+
 5. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wspace_dir`.
+
 6. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
+
 7. Raw request and response payloads are cached to `.zcoder` cache files for inspection.
+
 8. The response text is parsed for UDIFFX file changes, which are extracted and applied to the base directory.
+
 9. The remaining text is parsed for `<AIPROG>` Lua scripts, which run through the AIPROG script engine with a directory context scoped to the base directory.
+
 10. Script results and remaining text are combined into the final answer.
+
 11. The `Run` row is updated with the answer and end state, and `ExecEvent::RunEnd(run_id)` is emitted.
+
 12. On failure, the `Run` row is updated with the error and `ExecEvent::RunError(run_id)` is emitted.
-13. `ModelEvent` values emitted during the run drive the TUI work info display, such as model name, elapsed time, tokens, and cost.
+
+13. `ModelChangeEvent` values emitted during the run drive the TUI work info display, such as model name, elapsed time, tokens, and cost.
 
 ## Data and State
 
-- Persistence uses SQLite through `rusqlite`.
+- Persistence uses SQLite through `rusqlite`, and all database access lives in `zc-base`.
 
-- `ModelManager` is a process wide singleton created with `OnceLock` and exposed through `get_model_manager()`.
+- `ModelManager` is a process wide singleton created with `OnceLock` and exposed through `get_model_manager()` in `zc-base`.
 
 - Entities include runs (`RunBmc`) and AI exchanges (`AirBmc`). The `Aixc` entity type maps to AI exchange rows in model events.
 
-- Model events are published on entity changes and forwarded into the TUI event stream by `model_loop`.
+- The entity structs and the event contracts live in `zc-core`; the `Db`, the CRUD support, and the `RunBmc`/`AirBmc` accessors live in `zc-base`.
+
+- Model change events are published on entity changes and forwarded to the TUI as `TuiEvent::Model`.
 
 - TUI state is a pure render model: input buffer, waiting flag, status text, last prompt, last answer, last error, scroll positions, and optional system metrics.
+
+## Logging
+
+- Debug tracing is written to `.zcoder/debug-log/log.txt` through a non-blocking file appender.
+
+- The tracing subscriber is configured with an `EnvFilter` that enables `debug` for the application crates.
+
+- The non-blocking guard is kept alive for the process lifetime so buffered logs are flushed.
 
 ## Error Ownership
 
@@ -173,23 +320,41 @@ The `RunPrompt` path spans the TUI, the executor, and the model layer.
 
 - `zc-common::Error` covers shared utility failures and is not a workspace wide error.
 
-- `zc-core::Error` covers executor, config, provider, filesystem, and file change application failures.
+- `zc-core` mostly exposes plain types; any type-level failure is local to `zc-core`.
+
+- `zc-router` owns the message contract errors, including `ModelRpcError` for a failed model RPC.
+
+- `zc-base` owns the executor, config, provider, filesystem, database, model, and file change application errors.
 
 - `zc-tui::Error` covers terminal, UI, and lifecycle failures.
 
-- The root binary converts errors from the crate entry points it calls directly.
+- The root binary owns only orchestration-level conversion in `src/error.rs`:
+
+  - `Custom`
+
+  - `SimpleFs`
+
+  - `ZcBase(zc_base::exec::Error)`
+
+  - `ZcTui(zc_tui::Error)`
+
+- Errors are converted at the crate boundary where they originate.
 
 ## Design Considerations
 
-- The workspace is split by runtime responsibility rather than by technology, so the executor and the TUI can evolve independently.
+- The workspace is split by runtime responsibility rather than by technology, so the base and the TUI can evolve independently.
 
 - A thin root binary makes startup easy to audit and prevents domain behavior from accumulating in the binary crate.
 
 - A narrow `zc-common` avoids creating a large shared dependency that every crate must accept.
 
+- `zc-core` is types and contracts only, so the compiler can enforce the boundary: no crate reaches SQLite through it.
+
+- Only `zc-base` opens a connection, so the database has a single home and the later process split stays a transport swap.
+
 - One app event stream in the TUI keeps terminal input, actions, executor status, model events, and ticks consistently ordered.
 
-- The executor boundary keeps long running work, AI calls, and file changes out of the UI loop.
+- The base boundary keeps long running work, AI calls, and file changes out of the UI loop.
 
 - The asset runtime keeps workspace `.zcoder` state reproducible while preserving user edits.
 

@@ -14,6 +14,7 @@ crates/zc-common/src/
   error.rs       # local Error and Result
   cache.rs       # file cache helpers
   event_base.rs  # bounded mpsc channel primitives
+  msg_id.rs      # message id newtype
   time.rs        # time helpers
   yaml.rs        # content conversion helpers
 ```
@@ -29,6 +30,7 @@ pub use error::{Error, Result};
 
 pub mod cache;
 pub mod event_base;
+pub mod msg_id;
 pub mod time;
 pub mod yaml;
 
@@ -39,6 +41,7 @@ pub mod yaml;
 
 - `error`: local `Error` and `Result`, scoped to this crate only
 - `event_base`: bounded mpsc channel primitives, `MpscTx`, `MpscRx`, and `new_mpsc_bounded(name, capacity)`
+- `msg_id`: the `MsgId` newtype that identifies a message crossing the router boundary
 - `time`: time helpers such as `now_micro()`
 - `cache`: file cache helpers such as `save_file_cache(name, content)`
 - `yaml`: content conversion helpers such as `json_to_yaml_string`
@@ -47,4 +50,4 @@ pub mod yaml;
 
 - A narrow `zc-common` avoids creating a large shared dependency that every crate must accept, which reduces coupling and keeps ownership decisions explicit.
 - `zc-common::Error` is local to shared common behavior and is not a workspace-wide error.
-- `zc-common` must not depend on `zc-core`, `zc-tui`, `zc-asset`, or the root binary.
+- `zc-common` must not depend on `zc-core`, `zc-router`, `zc-base`, `zc-tui`, `zc-asset`, or the root binary.

@@ -13,7 +13,7 @@ The core TUI supports:
 - quit commands
 - waiting state while executor work is active
 - answer and error display state
-- executor status handling
+- model change and exec event handling
 - optional timed redraws and transient feedback
 - a modular state processor and event handler structure that can grow like the AIPack TUI
 
@@ -55,10 +55,11 @@ pub struct AppState {
 Core app events:
 
 ```rust
-pub enum AppEvent {
+pub enum TuiEvent {
 	Term(Event),
 	Action(AppActionEvent),
-	Exec(ExecStatusEvent),
+	Exec(ExecEvent),
+	Model(ModelChangeEvent),
 	Tick,
 	DoRedraw,
 }
@@ -118,8 +119,8 @@ State responsibilities:
 
 `event/app_event.rs` owns the app event boundary:
 
-- `AppEvent`
-  - wraps terminal input, semantic actions, executor statuses, ticks, and redraw requests
+- `TuiEvent`
+  - wraps terminal input, semantic actions, run lifecycle events, model change events, ticks, and redraw requests
 - `AppActionEvent`
   - represents user intent after raw terminal input is interpreted
 - scroll and navigation enums
@@ -130,9 +131,9 @@ State responsibilities:
 - only processes key press events unless repeat handling is explicitly needed
 - converts `Ctrl-c`, `/q`, `Enter`, character input, backspace, navigation keys, and scroll keys into semantic actions
 - keeps modifier handling explicit
-- keeps executor-facing commands behind `ExecActionEvent`
+- keeps executor-facing commands behind the router message sender
 
-`tui_loop.rs` owns the event handling loop. On each iteration it renders the current state, waits for one `AppEvent`, then applies the event.
+`tui_loop.rs` owns the event handling loop. On each iteration it renders the current state, waits for one `TuiEvent`, then applies the event.
 
 Loop responsibilities:
 
@@ -141,7 +142,7 @@ Loop responsibilities:
 - preserve ordered UI events
 - debounce or coalesce high-frequency non-UI events when introduced
 - treat redraw and tick events as low-priority signals
-- send executor actions through `ExecutorTx`
+- send Core actions through the router message sender
 - exit on `AppActionEvent::Quit`
 
 `tui_impl.rs` owns the runtime setup:
@@ -149,7 +150,7 @@ Loop responsibilities:
 - initialize the terminal
 - clear the initial screen
 - create typed app channel wrappers such as `AppTx`
-- forward executor status events into the app event stream
+- forward model change and exec events into the app event stream
 - start terminal reader tasks
 - start ping timer tasks only when timed refreshes are needed
 - restore the terminal before returning
@@ -201,19 +202,28 @@ Action behavior:
   - clears the input
   - sets `waiting` to true
   - clears `last_error`
-  - sends `ExecActionEvent::RunPrompt(prompt)` to the executor
+  - sends the run request to Core through the router message sender
 
-Executor status behavior:
+Exec event behavior:
 
-- `RunStart`
+The exec event receiver carries the run lifecycle events produced by the `zc-base` executor.
+
+- `ExecEvent::RunStart(run_id)`
   - sets status to `Sending to AI...`
-- `RunEnd`
+  - marks the app as waiting
+- `ExecEvent::RunEnd(run_id)`
   - sets `waiting` to false
   - sets status to `Idle`
-- `RunResult(answer)`
-  - stores the answer as `last_answer`
-- `RunError(err)`
-  - stores the error as `last_error`
+- `ExecEvent::RunError(run_id)`
+  - sets `waiting` to false
+  - surfaces the failure
+
+Model event behavior:
+
+The model change receiver carries the persisted entity changes produced by `zc-base`.
+
+- a run change is re-read through the `run_get` RPC client and stored as the current run result
+- an air change is re-read through the `air_get` RPC client and refreshed into the work info, such as model name, elapsed time, tokens, and cost
 
 ## Design Considerations
 
