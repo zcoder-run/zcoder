@@ -6,7 +6,7 @@ use clap::Parser as _;
 pub use error::{Error, Result};
 use tracing_appender::rolling::never;
 use tracing_subscriber::EnvFilter;
-use zc_base::{ZcBase, ZcBaseConfig};
+use zc_base::{InProcBase, ZcBaseConfig};
 
 const DEBUG_LOG: bool = true;
 
@@ -46,12 +46,12 @@ async fn main() -> Result<()> {
 	if let Some(dir) = cli_cmd.dir {
 		base_config = base_config.with_base_dir(dir);
 	}
-	let zc_base = ZcBase::start(base_config)?;
+	let inproc_base = InProcBase::start(base_config)?;
 
 	// -- Running Tui application
-	let core_msg_tx = zc_base.core_msg_tx();
-	let exec_event_rx = zc_base.exec_event_rx();
-	zc_tui::start_tui(core_msg_tx, exec_event_rx, cli_cmd.prompt).await?;
+	let core_msg_tx = inproc_base.core_msg_tx();
+	let (model_change_rx, exec_event_rx) = inproc_base.into_event_rx();
+	zc_tui::start_tui(core_msg_tx, model_change_rx, exec_event_rx, cli_cmd.prompt).await?;
 
 	Ok(())
 }

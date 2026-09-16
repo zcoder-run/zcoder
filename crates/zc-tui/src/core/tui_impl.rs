@@ -6,12 +6,14 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
-use zc_core::exec::ExecEventRx;
-use zc_router::{
-	CoreMsgTx, new_exec_event_channel, new_model_change_channel, run_exec_event_loop, run_model_change_loop,
-};
+use zc_router::{CoreMsgRx, CoreMsgTx, ModelChangeRx};
 
-pub async fn start_tui(core_msg_tx: CoreMsgTx, exec_rx: ExecEventRx, initial_prompt: Option<String>) -> Result<()> {
+pub async fn start_tui(
+	core_msg_tx: CoreMsgTx,
+	model_change_rx: ModelChangeRx,
+	exec_event_rx: CoreMsgRx,
+	initial_prompt: Option<String>,
+) -> Result<()> {
 	// -- Init Terminal
 	let mut terminal = ratatui::init();
 	execute!(stdout(), EnableMouseCapture)?;
@@ -21,15 +23,8 @@ pub async fn start_tui(core_msg_tx: CoreMsgTx, exec_rx: ExecEventRx, initial_pro
 	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>("tui_channel", 1000)?;
 
 	// -- Run the model loop
-	let (model_change_tx, model_change_rx) = new_model_change_channel();
-	tokio::spawn(async move { run_model_change_loop(model_change_tx).await });
-
 	let tui_tx_for_model = tui_tx.clone();
 	tokio::spawn(async move { run_model_loop(tui_tx_for_model, model_change_rx).await });
-
-	// -- Run the exec event loop
-	let (exec_event_tx, exec_event_rx) = new_exec_event_channel();
-	tokio::spawn(async move { run_exec_event_loop(exec_rx, exec_event_tx).await });
 
 	// -- Spawn status event forwarder
 	let tui_tx_for_exec = tui_tx.clone();
