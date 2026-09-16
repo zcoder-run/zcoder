@@ -10,15 +10,15 @@ use zc_core::model::Id;
 
 /// Generic envelope carrying messages between frontends (TUI, base) and Core.
 #[derive(Debug)]
-pub struct CoreMsg {
+pub struct RouterMsg {
 	pub msg_id: MsgId,
 	pub wks_id: Id,
-	pub data: CoreMsgData,
+	pub data: RouterMsgData,
 }
 
-/// Payload carried by a [`CoreMsg`]. The variants are intentionally not all the same semantic kind.
+/// Payload carried by a [`RouterMsg`]. The variants are intentionally not all the same semantic kind.
 #[derive(Debug)]
-pub enum CoreMsgData {
+pub enum RouterMsgData {
 	ModelRpc(ModelRpcCmd),
 	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
@@ -27,14 +27,14 @@ pub enum CoreMsgData {
 
 // endregion: --- Types
 
-// region:    --- CoreMsg Constructors
+// region:    --- RouterMsg Constructors
 
 /// Monotonic source of `MsgId` values for messages created in this process.
 static NEXT_MSG_ID: AtomicU64 = AtomicU64::new(1);
 
-impl CoreMsg {
+impl RouterMsg {
 	/// Creates a message with a fresh [`MsgId`] and the single-workspace stub `wks_id`.
-	pub fn new(data: CoreMsgData) -> Self {
+	pub fn new(data: RouterMsgData) -> Self {
 		let msg_id = MsgId::new(NEXT_MSG_ID.fetch_add(1, Ordering::Relaxed));
 		Self {
 			msg_id,
@@ -44,21 +44,21 @@ impl CoreMsg {
 	}
 }
 
-// endregion: --- CoreMsg Constructors
+// endregion: --- RouterMsg Constructors
 
-// region:    --- CoreMsg Channels
+// region:    --- RouterMsg Channels
 
-pub type CoreMsgTx = zc_common::event_base::MpscTx<CoreMsg>;
-pub type CoreMsgRx = zc_common::event_base::MpscRx<CoreMsg>;
+pub type RouterMsgTx = zc_common::event_base::MpscTx<RouterMsg>;
+pub type RouterMsgRx = zc_common::event_base::MpscRx<RouterMsg>;
 
-/// Creates the bounded `CoreMsg` channel used between frontends and the router.
-pub fn new_core_msg_channel() -> (CoreMsgTx, CoreMsgRx) {
-	let (tx, rx) = zc_common::event_base::new_mpsc_bounded_default("core_msg_channel")
+/// Creates the bounded `RouterMsg` channel used between frontends and the router.
+pub fn new_router_msg_channel() -> (RouterMsgTx, RouterMsgRx) {
+	let (tx, rx) = zc_common::event_base::new_mpsc_bounded_default("router_msg_channel")
 		.expect("core msg channel capacity is non-zero");
 	(tx, rx)
 }
 
-// endregion: --- CoreMsg Channels
+// endregion: --- RouterMsg Channels
 
 // region:    --- Tests
 
@@ -69,17 +69,17 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_msg_core_msg_construct() -> Result<()> {
+	fn test_msg_router_msg_construct() -> Result<()> {
 		// -- Exec
-		let msg = CoreMsg {
+		let msg = RouterMsg {
 			msg_id: MsgId::new(7),
 			wks_id: Id::default(),
-			data: CoreMsgData::Exec(ExecCmd::RunPrompt("hello".to_string())),
+			data: RouterMsgData::Exec(ExecCmd::RunPrompt("hello".to_string())),
 		};
 
 		// -- Check
 		assert_eq!(msg.msg_id.as_u64(), 7);
-		assert!(matches!(msg.data, CoreMsgData::Exec(_)));
+		assert!(matches!(msg.data, RouterMsgData::Exec(_)));
 
 		Ok(())
 	}

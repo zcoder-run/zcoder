@@ -1,8 +1,8 @@
 use simple_fs::SPath;
 use zc_core::exec::{ExecEventRx, Executor, ExecutorConfig};
 use zc_router::{
-	CoreMsgRx, CoreMsgTx, ModelChangeRx, new_core_msg_channel, new_exec_event_channel,
-	new_model_change_channel, run_exec_event_loop, run_model_change_loop, run_router,
+	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel, new_router_msg_channel,
+	run_exec_event_loop, run_model_change_loop, run_router,
 };
 
 // region:    --- Config
@@ -63,20 +63,20 @@ impl ZcBaseConfig {
 /// Shared by the future server entry (`ZcBase::start`) and the temporary
 /// in-process stand-in (`InProcBase::start`) so both start the base role the
 /// same way. Must be called from within a Tokio runtime.
-fn start_base_core(config: ZcBaseConfig) -> zc_core::exec::Result<(CoreMsgTx, ExecEventRx)> {
+fn start_base_core(config: ZcBaseConfig) -> zc_core::exec::Result<(RouterMsgTx, ExecEventRx)> {
 	// -- Core initialization
 	let (executor, exec_cmd_tx, exec_event_rx) = Executor::new(config.into_executor_config())?;
 	tokio::spawn(async move { executor.start().await });
 
 	// -- Router loop
-	let (core_msg_tx, core_msg_rx) = new_core_msg_channel();
+	let (router_msg_tx, router_msg_rx) = new_router_msg_channel();
 	tokio::spawn(async move {
-		if let Err(err) = run_router(core_msg_rx, exec_cmd_tx).await {
+		if let Err(err) = run_router(router_msg_rx, exec_cmd_tx).await {
 			tracing::warn!("router loop ended with error: {err:?}");
 		}
 	});
 
-	Ok((core_msg_tx, exec_event_rx))
+	Ok((router_msg_tx, exec_event_rx))
 }
 
 // endregion: --- Base Core
@@ -91,9 +91,9 @@ fn start_base_core(config: ZcBaseConfig) -> zc_core::exec::Result<(CoreMsgTx, Ex
 /// rather than as TUI UI logic, means the later split removes code from one
 /// place instead of untangling TUI code.
 pub struct InProcBase {
-	core_msg_tx: CoreMsgTx,
+	router_msg_tx: RouterMsgTx,
 	model_change_rx: ModelChangeRx,
-	exec_event_rx: CoreMsgRx,
+	exec_event_rx: RouterMsgRx,
 }
 
 impl InProcBase {
@@ -101,7 +101,7 @@ impl InProcBase {
 	///
 	/// Must be called from within a Tokio runtime.
 	pub fn start(config: ZcBaseConfig) -> zc_core::exec::Result<Self> {
-		let (core_msg_tx, exec_event_source_rx) = start_base_core(config)?;
+		let (router_msg_tx, exec_event_source_rx) = start_base_core(config)?;
 
 		// -- Core-facing pump loops
 		let (model_change_tx, model_change_rx) = new_model_change_channel();
@@ -111,19 +111,19 @@ impl InProcBase {
 		tokio::spawn(async move { run_exec_event_loop(exec_event_source_rx, exec_event_tx).await });
 
 		Ok(Self {
-			core_msg_tx,
+			router_msg_tx,
 			model_change_rx,
 			exec_event_rx,
 		})
 	}
 
 	/// Returns a Core message sender for a frontend (commands and requests).
-	pub fn core_msg_tx(&self) -> CoreMsgTx {
-		self.core_msg_tx.clone()
+	pub fn router_msg_tx(&self) -> RouterMsgTx {
+		self.router_msg_tx.clone()
 	}
 
 	/// Returns the Core event receivers (model change and run lifecycle) for a frontend.
-	pub fn into_event_rx(self) -> (ModelChangeRx, CoreMsgRx) {
+	pub fn into_event_rx(self) -> (ModelChangeRx, RouterMsgRx) {
 		(self.model_change_rx, self.exec_event_rx)
 	}
 }
@@ -142,7 +142,7 @@ impl InProcBase {
 /// The transport is in-process MPSC today; a wire transport can replace it
 /// later without changing the message contract.
 pub struct ZcBase {
-	core_msg_tx: CoreMsgTx,
+	router_msg_tx: RouterMsgTx,
 	exec_event_rx: ExecEventRx,
 }
 
@@ -153,16 +153,16 @@ impl ZcBase {
 	/// returns the handles a frontend needs to reach Core. Must be called from
 	/// within a Tokio runtime.
 	pub fn start(config: ZcBaseConfig) -> zc_core::exec::Result<Self> {
-		let (core_msg_tx, exec_event_rx) = start_base_core(config)?;
+		let (router_msg_tx, exec_event_rx) = start_base_core(config)?;
 		Ok(Self {
-			core_msg_tx,
+			router_msg_tx,
 			exec_event_rx,
 		})
 	}
 
 	/// Returns a Core message sender for a frontend (commands and requests).
-	pub fn core_msg_tx(&self) -> CoreMsgTx {
-		self.core_msg_tx.clone()
+	pub fn router_msg_tx(&self) -> RouterMsgTx {
+		self.router_msg_tx.clone()
 	}
 
 	/// Returns the Core run lifecycle event receiver for a frontend.

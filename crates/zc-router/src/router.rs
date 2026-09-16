@@ -3,15 +3,15 @@ use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
 use crate::model_change::ModelChangeEvent;
 use crate::model_rpc::{ModelRpcCmd, ModelRpcError, ModelRpcReply, ModelRpcResult};
-use crate::msg::{CoreMsg, CoreMsgData, CoreMsgRx};
+use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx};
 use zc_common::MsgId;
 use zc_core::exec::ExecCmdTx;
 use zc_core::model::{AirBmc, Id, ModelManager, RunBmc, get_model_manager};
 
 // region:    --- Router Loop
 
-/// Receives [`CoreMsg`] values from the transport and routes each one to Core.
-pub async fn run_router(mut router_rx: CoreMsgRx, exec_cmd_tx: ExecCmdTx) -> Result<()> {
+/// Receives [`RouterMsg`] values from the transport and routes each one to Core.
+pub async fn run_router(mut router_rx: RouterMsgRx, exec_cmd_tx: ExecCmdTx) -> Result<()> {
 	while let Ok(msg) = router_rx.recv().await {
 		route(&exec_cmd_tx, msg).await?;
 	}
@@ -23,22 +23,22 @@ pub async fn run_router(mut router_rx: CoreMsgRx, exec_cmd_tx: ExecCmdTx) -> Res
 
 // region:    --- Router
 
-/// Dispatches a [`CoreMsg`] to the appropriate Core subsystem.
-pub async fn route(exec_cmd_tx: &ExecCmdTx, msg: CoreMsg) -> Result<()> {
+/// Dispatches a [`RouterMsg`] to the appropriate Core subsystem.
+pub async fn route(exec_cmd_tx: &ExecCmdTx, msg: RouterMsg) -> Result<()> {
 	let msg_id = msg.msg_id;
 	let wks_id = msg.wks_id;
 
 	match msg.data {
-		CoreMsgData::Exec(cmd) => {
+		RouterMsgData::Exec(cmd) => {
 			route_exec(exec_cmd_tx, msg_id, wks_id, cmd).await?;
 		}
-		CoreMsgData::ModelRpc(cmd) => {
+		RouterMsgData::ModelRpc(cmd) => {
 			route_model_rpc(msg_id, wks_id, cmd).await?;
 		}
-		CoreMsgData::ModelChange(event) => {
+		RouterMsgData::ModelChange(event) => {
 			route_model_change(msg_id, wks_id, event).await?;
 		}
-		CoreMsgData::ExecEvent(event) => {
+		RouterMsgData::ExecEvent(event) => {
 			route_exec_event(msg_id, wks_id, event).await?;
 		}
 	}

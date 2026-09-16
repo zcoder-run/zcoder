@@ -1,5 +1,5 @@
 use crate::core::event::{TuiEvent, TuiTx};
-use zc_router::{CoreMsgData, CoreMsgRx, ModelChangeRx};
+use zc_router::{ModelChangeRx, RouterMsgData, RouterMsgRx};
 
 // region:    --- Model Loop
 
@@ -7,7 +7,7 @@ use zc_router::{CoreMsgData, CoreMsgRx, ModelChangeRx};
 /// `zc-router` and forwarding them to the TUI event channel.
 pub async fn run_model_loop(tui_tx: TuiTx, mut model_change_rx: ModelChangeRx) {
 	while let Ok(msg) = model_change_rx.recv().await {
-		let CoreMsgData::ModelChange(model_event) = msg.data else {
+		let RouterMsgData::ModelChange(model_event) = msg.data else {
 			continue;
 		};
 		let res = tui_tx.send(TuiEvent::Model(model_event)).await;
@@ -23,9 +23,9 @@ pub async fn run_model_loop(tui_tx: TuiTx, mut model_change_rx: ModelChangeRx) {
 
 /// Runs the exec event loop, listening to run lifecycle messages delivered by
 /// `zc-router` and forwarding them to the TUI event channel.
-pub async fn run_exec_loop(tui_tx: TuiTx, mut exec_event_rx: CoreMsgRx) {
+pub async fn run_exec_loop(tui_tx: TuiTx, mut exec_event_rx: RouterMsgRx) {
 	while let Ok(msg) = exec_event_rx.recv().await {
-		let CoreMsgData::ExecEvent(exec_event) = msg.data else {
+		let RouterMsgData::ExecEvent(exec_event) = msg.data else {
 			continue;
 		};
 		let res = tui_tx.send(TuiEvent::Exec(exec_event)).await;
@@ -36,4 +36,3 @@ pub async fn run_exec_loop(tui_tx: TuiTx, mut exec_event_rx: CoreMsgRx) {
 }
 
 // endregion: --- Exec Loop
-

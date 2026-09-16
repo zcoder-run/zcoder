@@ -1,19 +1,17 @@
-use crate::msg::{CoreMsg, CoreMsgData};
-use zc_core::model::get_model_bus;
-
+use crate::msg::{RouterMsg, RouterMsgData};
 // region:    --- Types
-
 pub use zc_core::model::ModelChangeEvent;
+use zc_core::model::get_model_bus;
 
 // endregion: --- Types
 
 // region:    --- Model Change Channel
 
 /// Channel carrying model change messages from the router to a frontend.
-pub type ModelChangeTx = zc_common::event_base::MpscTx<CoreMsg>;
-pub type ModelChangeRx = zc_common::event_base::MpscRx<CoreMsg>;
+pub type ModelChangeTx = zc_common::event_base::MpscTx<RouterMsg>;
+pub type ModelChangeRx = zc_common::event_base::MpscRx<RouterMsg>;
 
-/// Creates the bounded `CoreMsg` channel used to deliver model changes to a frontend.
+/// Creates the bounded `RouterMsg` channel used to deliver model changes to a frontend.
 pub fn new_model_change_channel() -> (ModelChangeTx, ModelChangeRx) {
 	let (tx, rx) = zc_common::event_base::new_mpsc_bounded_default("model_change_channel")
 		.expect("model change channel capacity is non-zero");
@@ -25,12 +23,12 @@ pub fn new_model_change_channel() -> (ModelChangeTx, ModelChangeRx) {
 // region:    --- Model Change Loop
 
 /// Runs the model change loop, listening to the Core model bus and forwarding each
-/// change to the frontend as a `CoreMsgData::ModelChange` message.
+/// change to the frontend as a `RouterMsgData::ModelChange` message.
 pub async fn run_model_change_loop(model_change_tx: ModelChangeTx) {
 	let mut model_rx = get_model_bus().subscribe();
 
 	while let Ok(event) = model_rx.recv().await {
-		let msg = CoreMsg::new(CoreMsgData::ModelChange(event));
+		let msg = RouterMsg::new(RouterMsgData::ModelChange(event));
 		if model_change_tx.send(msg).await.is_err() {
 			break;
 		}

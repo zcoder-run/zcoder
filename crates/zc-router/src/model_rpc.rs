@@ -1,4 +1,4 @@
-use crate::msg::{CoreMsg, CoreMsgData, CoreMsgTx};
+use crate::msg::{RouterMsg, RouterMsgData, RouterMsgTx};
 use derive_more::Display;
 use zc_common::event_base::{OnceRx, OnceTx, new_once};
 use zc_core::model::{Air, Id, ListAirOptions, ListRunOptions, Run};
@@ -65,40 +65,40 @@ pub type ModelRpcResult<T> = core::result::Result<T, ModelRpcError>;
 // region:    --- Client Facade
 
 /// Requests a run by id through the router and awaits the single-use reply.
-pub async fn run_get(core_msg_tx: &CoreMsgTx, id: Id) -> ModelRpcResult<Option<Run>> {
+pub async fn run_get(router_msg_tx: &RouterMsgTx, id: Id) -> ModelRpcResult<Option<Run>> {
 	let (res_tx, res_rx) = new_once("model_rpc_run_get");
 	let cmd = ModelRpcCmd::RunGet { id, res_tx };
-	match request(core_msg_tx, cmd, res_rx).await? {
+	match request(router_msg_tx, cmd, res_rx).await? {
 		ModelRpcReply::Run(reply) => reply,
 		_ => Err(ModelRpcError::custom("unexpected reply for run_get")),
 	}
 }
 
 /// Requests a run list through the router and awaits the single-use reply.
-pub async fn run_list(core_msg_tx: &CoreMsgTx, options: ListRunOptions) -> ModelRpcResult<Vec<Run>> {
+pub async fn run_list(router_msg_tx: &RouterMsgTx, options: ListRunOptions) -> ModelRpcResult<Vec<Run>> {
 	let (res_tx, res_rx) = new_once("model_rpc_run_list");
 	let cmd = ModelRpcCmd::RunList { options, res_tx };
-	match request(core_msg_tx, cmd, res_rx).await? {
+	match request(router_msg_tx, cmd, res_rx).await? {
 		ModelRpcReply::RunList(reply) => reply,
 		_ => Err(ModelRpcError::custom("unexpected reply for run_list")),
 	}
 }
 
 /// Requests an air by id through the router and awaits the single-use reply.
-pub async fn air_get(core_msg_tx: &CoreMsgTx, id: Id) -> ModelRpcResult<Option<Air>> {
+pub async fn air_get(router_msg_tx: &RouterMsgTx, id: Id) -> ModelRpcResult<Option<Air>> {
 	let (res_tx, res_rx) = new_once("model_rpc_air_get");
 	let cmd = ModelRpcCmd::AirGet { id, res_tx };
-	match request(core_msg_tx, cmd, res_rx).await? {
+	match request(router_msg_tx, cmd, res_rx).await? {
 		ModelRpcReply::Air(reply) => reply,
 		_ => Err(ModelRpcError::custom("unexpected reply for air_get")),
 	}
 }
 
 /// Requests an air list through the router and awaits the single-use reply.
-pub async fn air_list(core_msg_tx: &CoreMsgTx, options: ListAirOptions) -> ModelRpcResult<Vec<Air>> {
+pub async fn air_list(router_msg_tx: &RouterMsgTx, options: ListAirOptions) -> ModelRpcResult<Vec<Air>> {
 	let (res_tx, res_rx) = new_once("model_rpc_air_list");
 	let cmd = ModelRpcCmd::AirList { options, res_tx };
-	match request(core_msg_tx, cmd, res_rx).await? {
+	match request(router_msg_tx, cmd, res_rx).await? {
 		ModelRpcReply::AirList(reply) => reply,
 		_ => Err(ModelRpcError::custom("unexpected reply for air_list")),
 	}
@@ -132,12 +132,12 @@ impl ModelRpcError {
 
 /// Sends a model RPC command and awaits its single-use reply.
 async fn request(
-	core_msg_tx: &CoreMsgTx,
+	router_msg_tx: &RouterMsgTx,
 	cmd: ModelRpcCmd,
 	res_rx: OnceRx<ModelRpcReply>,
 ) -> ModelRpcResult<ModelRpcReply> {
-	let msg = CoreMsg::new(CoreMsgData::ModelRpc(cmd));
-	core_msg_tx
+	let msg = RouterMsg::new(RouterMsgData::ModelRpc(cmd));
+	router_msg_tx
 		.send(msg)
 		.await
 		.map_err(|err| ModelRpcError::custom(err.to_string()))?;
