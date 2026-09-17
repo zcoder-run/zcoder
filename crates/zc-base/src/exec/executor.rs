@@ -18,7 +18,7 @@ struct ExecutorInner {
 	// State needed for execution
 	genai_client: genai::Client,
 	base_chat_req: ChatRequest,
-	wspace_dir: SPath,
+	wks_dir: SPath,
 	base_dir: Option<SPath>,
 	model: Option<String>,
 	config_manager: ConfigManager,
@@ -27,16 +27,16 @@ struct ExecutorInner {
 
 #[derive(Debug, Clone)]
 pub struct ExecutorConfig {
-	wspace_dir: SPath,
+	wks_dir: SPath,
 	base_dir: Option<SPath>,
 	model: Option<String>,
 }
 
 impl Default for ExecutorConfig {
 	fn default() -> Self {
-		let wspace_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
+		let wks_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
 		Self {
-			wspace_dir,
+			wks_dir,
 			base_dir: None,
 			model: None,
 		}
@@ -44,8 +44,8 @@ impl Default for ExecutorConfig {
 }
 
 impl ExecutorConfig {
-	pub fn with_wspace_dir(mut self, wspace_dir: impl Into<SPath>) -> Self {
-		self.wspace_dir = wspace_dir.into();
+	pub fn with_wks_dir(mut self, wks_dir: impl Into<SPath>) -> Self {
+		self.wks_dir = wks_dir.into();
 		self
 	}
 
@@ -66,8 +66,8 @@ impl Executor {
 		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
 
 		// -- Sync project assets and load config
-		zc_asset::update_zcoder_project(&config.wspace_dir)?;
-		let config_path = config.wspace_dir.join(".zcoder").join("config.toml");
+		zc_asset::update_zcoder_project(&config.wks_dir)?;
+		let config_path = config.wks_dir.join(".zcoder").join("config.toml");
 		let config_manager = ConfigManager::from_file(config_path)?;
 
 		let aip_registry = aiprog::AipRegistry::from_aip_modules()?;
@@ -84,7 +84,7 @@ impl Executor {
 					status_tx,
 					genai_client: genai::Client::new()?,
 					base_chat_req,
-					wspace_dir: config.wspace_dir,
+					wks_dir: config.wks_dir,
 					base_dir: config.base_dir,
 					model: config.model,
 					config_manager,
@@ -129,7 +129,7 @@ impl ExecutorInner {
 		let script_engine = self.script_engine.clone();
 
 		// -- Refresh project assets and config dynamically
-		let _ = zc_asset::update_zcoder_project(&self.wspace_dir);
+		let _ = zc_asset::update_zcoder_project(&self.wks_dir);
 		let _ = self.config_manager.refresh_if_modified();
 		let active_config = self.config_manager.get_config();
 		let model_ref = self.model.as_deref().unwrap_or(active_config.maestro_model());
@@ -139,16 +139,16 @@ impl ExecutorInner {
 			if base_dir.is_absolute() {
 				base_dir.clone()
 			} else {
-				self.wspace_dir.join(base_dir)
+				self.wks_dir.join(base_dir)
 			}
 		} else if let Some(config_working_dir) = active_config.workspace_working_dir() {
 			if config_working_dir.is_absolute() {
 				config_working_dir.clone()
 			} else {
-				self.wspace_dir.join(config_working_dir)
+				self.wks_dir.join(config_working_dir)
 			}
 		} else {
-			self.wspace_dir.clone()
+			self.wks_dir.clone()
 		};
 
 		// Use an async block with an explicit type annotation
@@ -445,7 +445,7 @@ mod tests {
 
 		// -- Exec
 		let config = ExecutorConfig::default()
-			.with_wspace_dir(temp_spath.clone())
+			.with_wks_dir(temp_spath.clone())
 			.with_base_dir(temp_spath.join("demo"));
 		let (executor, _tx, _rx) = Executor::new(config)?;
 
@@ -468,7 +468,7 @@ mod tests {
 		std::fs::create_dir_all(&temp_dir)?;
 		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
 
-		let config = ExecutorConfig::default().with_wspace_dir(temp_spath.clone());
+		let config = ExecutorConfig::default().with_wks_dir(temp_spath.clone());
 		let (executor, _tx, _rx) = Executor::new(config)?;
 
 		let config_path = temp_spath.join(".zcoder").join("config.toml");
@@ -494,7 +494,7 @@ big = "custom-model"
 		assert!(!config_path.exists());
 
 		// Simulate project update and refresh as done in handle_run_prompt
-		let _ = zc_asset::update_zcoder_project(&executor.inner.wspace_dir);
+		let _ = zc_asset::update_zcoder_project(&executor.inner.wks_dir);
 		let reloaded = executor.inner.config_manager.refresh_if_modified()?;
 		assert!(reloaded);
 		assert!(config_path.exists());

@@ -77,7 +77,7 @@ pub use model::Db;
 
 - `Executor::start()` consumes `ExecCmd` values until the command channel closes.
 
-- `ExecutorConfig` carries `wspace_dir`, an optional `base_dir`, and an optional explicit `model`.
+- `ExecutorConfig` carries `wks_dir`, an optional `base_dir`, and an optional explicit `model`.
 
 - The executor imports the contract types (`ExecCmd`, `ExecEvent`, and the channel aliases) from `zc_core::exec` and the model layer from `crate::model`.
 
@@ -101,7 +101,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 3. Workspace assets are re-synced and the config is hot reloaded before each run.
 
-4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wspace_dir`.
+4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wks_dir`.
 
 5. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
 
@@ -129,7 +129,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 ## Startup and Lifecycle
 
-- `ZcBaseConfig` carries `wspace_dir`, an optional `base_dir`, and an optional explicit `model`, and converts into `ExecutorConfig`.
+- `ZcBaseConfig` carries `wks_dir`, an optional `base_dir`, and an optional explicit `model`, and converts into `ExecutorConfig`.
 
 - `start_base_core(config)` starts Core initialization and the router dispatch loop: it creates the executor and spawns `executor.start()`, starts the model RPC handler, creates the router message channel, and spawns `run_router`.
 

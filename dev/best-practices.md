@@ -64,8 +64,8 @@ Distinguish between user-facing surfaces and internal code identifiers for works
   - `WTree` (for worktree structures)
   - `WSpaceConfig` (for workspace configuration struct)
 - Use short snake_case prefixes for variables, struct fields, and function parameters:
-  - `wspace_dir: SPath` (instead of `workspace_dir` or `project_dir`)
+  - `wks_dir: SPath` (instead of `workspace_dir` or `project_dir`)
   - `wbench_dir: SPath`
   - `wtree_dir: SPath`
   - `wspace: &WSpace`
-- Method and builder names follow the same short convention, for example `with_wspace_dir(...)` and `wspace.wbench(...)`.
+- Method and builder names follow the same short convention, for example `with_wks_dir(...)` and `wspace.wbench(...)`.

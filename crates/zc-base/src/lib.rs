@@ -18,8 +18,8 @@ use model_rpc::run_model_rpc_handler;
 use simple_fs::SPath;
 use zc_core::exec::ExecEventRx;
 use zc_router::{
-	ModelChangeRx, RouterClient, RouterMsgRx, RouterMsgTx, new_exec_event_channel,
-	new_model_change_channel, new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
+	ModelChangeRx, RouterClient, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
+	new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
 };
 
 // region:    --- Config
@@ -27,16 +27,16 @@ use zc_router::{
 /// Configuration for the in-process `zc-base` server.
 #[derive(Debug, Clone)]
 pub struct ZcBaseConfig {
-	wspace_dir: SPath,
+	wks_dir: SPath,
 	base_dir: Option<SPath>,
 	model: Option<String>,
 }
 
 impl Default for ZcBaseConfig {
 	fn default() -> Self {
-		let wspace_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
+		let wks_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
 		Self {
-			wspace_dir,
+			wks_dir,
 			base_dir: None,
 			model: None,
 		}
@@ -44,8 +44,8 @@ impl Default for ZcBaseConfig {
 }
 
 impl ZcBaseConfig {
-	pub fn with_wspace_dir(mut self, wspace_dir: impl Into<SPath>) -> Self {
-		self.wspace_dir = wspace_dir.into();
+	pub fn with_wks_dir(mut self, wks_dir: impl Into<SPath>) -> Self {
+		self.wks_dir = wks_dir.into();
 		self
 	}
 
@@ -60,7 +60,7 @@ impl ZcBaseConfig {
 	}
 
 	fn into_executor_config(self) -> ExecutorConfig {
-		let mut executor_config = ExecutorConfig::default().with_wspace_dir(self.wspace_dir);
+		let mut executor_config = ExecutorConfig::default().with_wks_dir(self.wks_dir);
 		if let Some(base_dir) = self.base_dir {
 			executor_config = executor_config.with_base_dir(base_dir);
 		}
@@ -143,7 +143,12 @@ impl InProcBase {
 
 	/// Returns the in-process router client for a frontend.
 	pub fn router_client(self) -> RouterClient {
-		RouterClient::in_proc(self.router_msg_tx, self.model_change_rx, self.exec_event_rx, self.reply_rx)
+		RouterClient::in_proc(
+			self.router_msg_tx,
+			self.model_change_rx,
+			self.exec_event_rx,
+			self.reply_rx,
+		)
 	}
 
 	/// Returns a Core message sender for a frontend (commands and requests).

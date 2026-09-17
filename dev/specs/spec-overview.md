@@ -183,8 +183,8 @@ Dependencies:
 ```text
 root main
   -> parse CLI
-  -> resolve wspace_dir as the current directory
-  -> build ZcBaseConfig::default().with_wspace_dir(wspace_dir)
+  -> resolve wks_dir as the current directory
+  -> build ZcBaseConfig::default().with_wks_dir(wks_dir)
   -> apply .with_base_dir(dir) when --dir is given
   -> InProcBase::start(config) -> inproc_base
   -> inproc_base.router_client() -> router_client
@@ -256,7 +256,7 @@ pub enum AppActionEvent {
 
 ```text
 CLI parse (zcoder)
-  -> ZcBaseConfig (wspace_dir, optional base_dir, optional model)
+  -> ZcBaseConfig (wks_dir, optional base_dir, optional model)
   -> InProcBase::start -> inproc_base.router_client()
   -> zc_tui::start_tui(router_client, ...)
        -> tui_impl: ratatui init, TuiEvent channel, model event loop,
@@ -286,7 +286,7 @@ The `RunPrompt` path spans the TUI, the router, and `zc-base`.
 
 4. Workspace assets are re-synced and the config is hot reloaded before each run.
 
-5. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wspace_dir`.
+5. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wks_dir`.
 
 6. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
 

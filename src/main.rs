@@ -39,10 +39,10 @@ async fn main() -> Result<()> {
 
 	// -- Cmd parsing & Setup
 	let cli_cmd = CliCmd::parse();
-	let wspace_dir = simple_fs::current_dir()?;
+	let wks_dir = simple_fs::current_dir()?;
 
 	// -- zc-base setup (owns Core initialization and the router loop)
-	let mut base_config = ZcBaseConfig::default().with_wspace_dir(wspace_dir);
+	let mut base_config = ZcBaseConfig::default().with_wks_dir(wks_dir);
 	if let Some(dir) = cli_cmd.dir {
 		base_config = base_config.with_base_dir(dir);
 	}
