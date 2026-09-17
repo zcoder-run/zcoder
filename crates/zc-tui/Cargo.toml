@@ -14,7 +14,7 @@ repository = "https://github.com/zcoder-run/zcoder"
 # -- Sub Crates
 zc-core = { workspace = true }
 zc-common = { workspace = true }
-zc-router = { workspace = true }
+zc-router = { workspace = true, features = ["client"] }
 # -- Trace
 tracing = { workspace = true }
 # -- Async

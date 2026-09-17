@@ -1,14 +1,25 @@
 // region:    --- Modules
 
+#[cfg(feature = "client")]
+use crate::client_info::ClientInfo;
+#[cfg(feature = "client")]
+use crate::error::Error;
 use crate::error::Result;
 use crate::exec_event::ExecEventRx;
 use crate::model_change::ModelChangeRx;
 use crate::model_rpc::{ModelRpcError, ModelRpcReply, ModelRpcResult};
 use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx};
+#[cfg(feature = "client")]
+use crate::transport::{ClientConn, ClientConnSink, WireReader, WireWriter};
 use std::collections::HashMap;
+#[cfg(feature = "client")]
+use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
+#[cfg(feature = "client")]
+use tokio::net::UnixStream;
 use zc_common::MsgId;
 use zc_common::event_base::OnceTx;
+use zc_core::model::Id;
 
 // endregion: --- Modules
 
@@ -21,10 +32,17 @@ pub struct RouterClient {
 }
 
 pub(crate) struct RouterClientInner {
-	pub(crate) router_msg_tx: RouterMsgTx,
+	pub(crate) outbound: Outbound,
+	pub(crate) wks_id: Mutex<Option<Id>>,
 	pub(crate) model_change_rx: Mutex<Option<ModelChangeRx>>,
 	pub(crate) exec_event_rx: Mutex<Option<ExecEventRx>>,
 	pub(crate) pending_replies: Mutex<Option<PendingReplyMap>>,
+}
+
+pub(crate) enum Outbound {
+	InProc(RouterMsgTx),
+	#[cfg(feature = "client")]
+	Uds(ClientConn),
 }
 
 type PendingReplyMap = HashMap<MsgId, OnceTx<ModelRpcReply>>;
@@ -49,7 +67,8 @@ impl RouterClient {
 	) -> Self {
 		let client = Self {
 			inner: Arc::new(RouterClientInner {
-				router_msg_tx,
+				outbound: Outbound::InProc(router_msg_tx),
+				wks_id: Mutex::new(None),
 				model_change_rx: Mutex::new(Some(model_change_rx)),
 				exec_event_rx: Mutex::new(Some(exec_event_rx)),
 				pending_replies: Mutex::new(Some(HashMap::new())),
@@ -57,6 +76,72 @@ impl RouterClient {
 		};
 		tokio::spawn(Self::run_reply_loop(Arc::downgrade(&client.inner), reply_rx));
 		client
+	}
+
+	/// Connects to a base server over a Unix domain socket, performs the attach
+	/// handshake, and returns a client handle ready to send and receive.
+	#[cfg(feature = "client")]
+	pub async fn uds(socket_path: impl AsRef<Path>, client_info: ClientInfo) -> Result<Self> {
+		let stream = UnixStream::connect(socket_path.as_ref()).await?;
+		let (reader, writer) = stream.into_split();
+		let mut reader = WireReader::<_, RouterMsg>::new(reader);
+		let mut writer = WireWriter::<_, RouterMsg>::new(writer);
+
+		// -- Inline attach handshake before the reader task starts.
+		let attach_msg = RouterMsg::new(RouterMsgData::Attach(client_info));
+		let attach_msg_id = attach_msg.msg_id;
+		writer.write_frame(&attach_msg).await?;
+
+		let reply = reader
+			.read_frame()
+			.await?
+			.ok_or_else(|| Error::custom("connection closed during attach"))?;
+
+		let wks_id = match reply.data {
+			RouterMsgData::AttachOk(id) if reply.msg_id == attach_msg_id => id,
+			RouterMsgData::AttachErr(err) if reply.msg_id == attach_msg_id => return Err(Error::custom(err)),
+			_ => return Err(Error::custom("unexpected response during attach")),
+		};
+
+		// -- Local event channels for the client facade.
+		let (model_tx, model_rx) = crate::model_change::new_model_change_channel();
+		let (exec_tx, exec_rx) = crate::exec_event::new_exec_event_channel();
+
+		let (model_fwd_tx, mut model_fwd_rx) = tokio::sync::mpsc::unbounded_channel::<RouterMsg>();
+		tokio::spawn(async move {
+			while let Some(msg) = model_fwd_rx.recv().await {
+				if model_tx.send(msg).await.is_err() {
+					break;
+				}
+			}
+		});
+
+		let (exec_fwd_tx, mut exec_fwd_rx) = tokio::sync::mpsc::unbounded_channel::<RouterMsg>();
+		tokio::spawn(async move {
+			while let Some(msg) = exec_fwd_rx.recv().await {
+				if exec_tx.send(msg).await.is_err() {
+					break;
+				}
+			}
+		});
+
+		let inner = Arc::new_cyclic(|weak_inner| {
+			let sink = Arc::new(UdsSink {
+				inner: weak_inner.clone(),
+				model_tx: model_fwd_tx,
+				exec_tx: exec_fwd_tx,
+			});
+			let conn = ClientConn::from_halves("router_client_uds", reader, writer, sink);
+			RouterClientInner {
+				outbound: Outbound::Uds(conn),
+				wks_id: Mutex::new(Some(wks_id)),
+				model_change_rx: Mutex::new(Some(model_rx)),
+				exec_event_rx: Mutex::new(Some(exec_rx)),
+				pending_replies: Mutex::new(Some(HashMap::new())),
+			}
+		});
+
+		Ok(Self { inner })
 	}
 
 	async fn run_reply_loop(inner: Weak<RouterClientInner>, mut reply_rx: RouterMsgRx) {
@@ -82,13 +167,31 @@ impl RouterClient {
 	}
 
 	/// Sends a router message asynchronously.
-	pub async fn send(&self, msg: RouterMsg) -> Result<()> {
-		self.inner.router_msg_tx.send(msg).await.map_err(Into::into)
+	pub async fn send(&self, mut msg: RouterMsg) -> Result<()> {
+		if msg.wks_id == Id::default()
+			&& let Some(wks_id) = self.wks_id()
+		{
+			msg.wks_id = wks_id;
+		}
+		match &self.inner.outbound {
+			Outbound::InProc(tx) => tx.send(msg).await.map_err(Into::into),
+			#[cfg(feature = "client")]
+			Outbound::Uds(conn) => conn.send(msg).await,
+		}
 	}
 
-	/// Returns a reference to the inner router message sender.
-	pub fn router_msg_tx(&self) -> &RouterMsgTx {
-		&self.inner.router_msg_tx
+	/// Returns a reference to the inner router message sender if in-process.
+	pub fn router_msg_tx(&self) -> Option<&RouterMsgTx> {
+		match &self.inner.outbound {
+			Outbound::InProc(tx) => Some(tx),
+			#[cfg(feature = "client")]
+			Outbound::Uds(_) => None,
+		}
+	}
+
+	/// Returns the workspace id assigned to this client, if any.
+	pub fn wks_id(&self) -> Option<Id> {
+		self.inner.wks_id.lock().unwrap_or_else(|err| err.into_inner()).clone()
 	}
 
 	/// Takes the model change receiver if it has not been taken yet.
@@ -145,6 +248,41 @@ impl RouterClient {
 	}
 
 	// endregion: --- Pending Map
+}
+
+#[cfg(feature = "client")]
+struct UdsSink {
+	inner: Weak<RouterClientInner>,
+	model_tx: tokio::sync::mpsc::UnboundedSender<RouterMsg>,
+	exec_tx: tokio::sync::mpsc::UnboundedSender<RouterMsg>,
+}
+
+#[cfg(feature = "client")]
+impl ClientConnSink for UdsSink {
+	fn on_reply(&self, msg_id: MsgId, reply: ModelRpcReply) {
+		if let Some(inner) = self.inner.upgrade() {
+			RouterClient { inner }.complete_pending(msg_id, reply);
+		}
+	}
+
+	fn on_model_change(&self, msg: RouterMsg) {
+		let _ = self.model_tx.send(msg);
+	}
+
+	fn on_exec_event(&self, msg: RouterMsg) {
+		let _ = self.exec_tx.send(msg);
+	}
+
+	fn on_closed(&self) {
+		if let Some(inner) = self.inner.upgrade() {
+			let pending = inner
+				.pending_replies
+				.lock()
+				.unwrap_or_else(|err| err.into_inner())
+				.take();
+			drop(pending);
+		}
+	}
 }
 
 // endregion: --- Constructors & Transport
@@ -299,6 +437,219 @@ mod tests {
 		assert!(request.await.unwrap_err().is_cancelled());
 		assert!(client.inner.pending_replies.lock().unwrap().as_ref().unwrap().is_empty());
 		Ok(())
+	}
+
+	#[cfg(all(feature = "client", feature = "server"))]
+	mod uds_tests {
+		type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
+
+		use super::*;
+		use crate::WksResolver;
+		use crate::model_change::{ModelChangeEvent, ModelChangeTx, new_model_change_channel};
+		use crate::model_rpc::{ModelRpcCmd, ModelRpcCmdRx, new_model_rpc_cmd_channel};
+		use crate::server::{ConnWatch, RouterServer};
+		use crate::transport::unlink_if_exists;
+		use futures_util::future::BoxFuture;
+		use std::path::PathBuf;
+		use std::time::Duration;
+		use zc_core::model::{EntityAction, EntityType, RelIds};
+
+		struct StubResolver {
+			id: Id,
+			fail: bool,
+		}
+
+		impl WksResolver for StubResolver {
+			fn resolve<'a>(&'a self, _info: &'a ClientInfo) -> BoxFuture<'a, crate::error::Result<Id>> {
+				Box::pin(async move {
+					if self.fail {
+						Err(crate::error::Error::custom("stub resolver failure"))
+					} else {
+						Ok(self.id)
+					}
+				})
+			}
+		}
+
+		struct PathStubResolver;
+
+		impl WksResolver for PathStubResolver {
+			fn resolve<'a>(&'a self, info: &'a ClientInfo) -> BoxFuture<'a, crate::error::Result<Id>> {
+				Box::pin(async move {
+					let id_str = if info.wks_dir.ends_with("zc-a") {
+						"00000000-0000-0000-0000-000000000001"
+					} else {
+						"00000000-0000-0000-0000-000000000002"
+					};
+					Ok(Id::try_from(id_str.to_string())?)
+				})
+			}
+		}
+
+		async fn start_server(
+			socket_name: &str,
+			resolver: Arc<dyn WksResolver>,
+		) -> Result<(PathBuf, ConnWatch, ModelRpcCmdRx, ModelChangeTx)> {
+			let socket_path = std::env::temp_dir().join(socket_name);
+			unlink_if_exists(&socket_path)?;
+
+			let (exec_cmd_tx, _exec_cmd_rx) = zc_common::event_base::new_mpsc_bounded("test_exec_cmd", 8)?;
+			let (model_rpc_cmd_tx, model_rpc_cmd_rx) = new_model_rpc_cmd_channel();
+			let (model_change_tx, model_change_rx) = new_model_change_channel();
+			let (_exec_event_tx, exec_event_rx) = crate::exec_event::new_exec_event_channel();
+
+			let server = RouterServer::bind(
+				&socket_path,
+				exec_cmd_tx,
+				model_rpc_cmd_tx,
+				resolver,
+				model_change_rx,
+				exec_event_rx,
+			)
+			.await?;
+			let watch = server.conn_watch();
+			tokio::spawn(async move {
+				if let Err(err) = server.run().await {
+					tracing::error!("->> test server stopped: {err}");
+				}
+			});
+
+			Ok((socket_path, watch, model_rpc_cmd_rx, model_change_tx))
+		}
+
+		#[tokio::test]
+		async fn test_router_client_uds_attach_and_rpc() -> Result<()> {
+			let assigned_id = Id::try_from("00000000-0000-0000-0000-000000000077".to_string())?;
+			let resolver = Arc::new(StubResolver {
+				id: assigned_id.clone(),
+				fail: false,
+			});
+			let (socket_path, _watch, mut rpc_rx, _model_tx) =
+				start_server("zc-router-test-uds-attach-rpc.sock", resolver).await?;
+
+			tokio::spawn(async move {
+				if let Ok(ModelRpcCmd::DbSize { res_tx }) = rpc_rx.recv().await {
+					res_tx.send(ModelRpcReply::DbSize(Ok(42)));
+				}
+			});
+
+			let client = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-wks")).await?;
+			assert_eq!(client.wks_id(), Some(assigned_id));
+
+			let size = crate::model_rpc::db_size(&client).await?;
+			assert_eq!(size, 42);
+
+			Ok(())
+		}
+
+		#[tokio::test]
+		async fn test_router_client_uds_fanout_filters_by_wks() -> Result<()> {
+			let (socket_path, _watch, _rpc_rx, model_tx) =
+				start_server("zc-router-test-uds-fanout.sock", Arc::new(PathStubResolver)).await?;
+
+			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-a")).await?;
+			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-b")).await?;
+
+			let wks_a = client_a.wks_id().ok_or("missing wks_a")?;
+			let wks_b = client_b.wks_id().ok_or("missing wks_b")?;
+			assert_ne!(wks_a, wks_b);
+
+			let mut model_rx_a = client_a.take_model_change_rx().ok_or("missing rx_a")?;
+			let mut model_rx_b = client_b.take_model_change_rx().ok_or("missing rx_b")?;
+
+			let model_event = ModelChangeEvent::new(
+				EntityType::Run,
+				EntityAction::Created,
+				Some(Id::default()),
+				RelIds::default(),
+			);
+			let event = RouterMsg {
+				msg_id: MsgId::new(50),
+				wks_id: wks_a.clone(),
+				data: RouterMsgData::ModelChange(model_event),
+			};
+			model_tx.send(event).await?;
+
+			let received_a = tokio::time::timeout(Duration::from_secs(1), model_rx_a.recv()).await??;
+			assert_eq!(received_a.msg_id.as_u64(), 50);
+
+			let timeout_b = tokio::time::timeout(Duration::from_millis(50), model_rx_b.recv()).await;
+			assert!(timeout_b.is_err(), "client b should not have received event for wks_a");
+
+			Ok(())
+		}
+
+		#[tokio::test]
+		async fn test_router_client_uds_attach_err() -> Result<()> {
+			let resolver = Arc::new(StubResolver {
+				id: Id::default(),
+				fail: true,
+			});
+			let (socket_path, mut watch, _rpc_rx, _model_tx) =
+				start_server("zc-router-test-uds-attach-err.sock", resolver).await?;
+
+			let res = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-err")).await;
+			assert!(res.is_err());
+			let err_msg = res.unwrap_err().to_string();
+			assert!(err_msg.contains("stub resolver failure"), "expected resolver message, got: {err_msg}");
+
+			watch.wait_for_zero().await;
+			assert_eq!(watch.count(), 0);
+
+			Ok(())
+		}
+
+		#[tokio::test]
+		async fn test_router_client_uds_send_stamps_wks_id() -> Result<()> {
+			let assigned_id = Id::try_from("00000000-0000-0000-0000-000000000088".to_string())?;
+			let resolver = Arc::new(StubResolver {
+				id: assigned_id.clone(),
+				fail: false,
+			});
+			let (socket_path, _watch, _rpc_rx, _model_tx) =
+				start_server("zc-router-test-uds-stamp.sock", resolver).await?;
+
+			let client = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-stamp")).await?;
+			let msg = RouterMsg::new(RouterMsgData::Exec(crate::exec::ExecCmd::RunPrompt("test".to_string())));
+			assert_eq!(msg.wks_id, Id::default());
+
+			client.send(msg).await?;
+			Ok(())
+		}
+
+		#[tokio::test]
+		async fn test_router_client_uds_scoped_model_change_distribution() -> Result<()> {
+			let (socket_path, _watch, _rpc_rx, model_tx) =
+				start_server("zc-router-test-uds-scoped.sock", Arc::new(PathStubResolver)).await?;
+
+			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-a")).await?;
+			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-b")).await?;
+
+			let wks_a = client_a.wks_id().ok_or("missing wks_a")?;
+			let mut rx_a = client_a.take_model_change_rx().ok_or("missing rx_a")?;
+			let mut rx_b = client_b.take_model_change_rx().ok_or("missing rx_b")?;
+
+			let event_data = ModelChangeEvent::new(
+				EntityType::Run,
+				EntityAction::Created,
+				Some(Id::default()),
+				RelIds { run_id: None, wks_id: Some(wks_a) },
+			);
+			let msg = RouterMsg {
+				msg_id: MsgId::new(99),
+				wks_id: wks_a,
+				data: RouterMsgData::ModelChange(event_data),
+			};
+			model_tx.send(msg).await?;
+
+			let recv_a = tokio::time::timeout(Duration::from_secs(1), rx_a.recv()).await??;
+			assert_eq!(recv_a.wks_id, wks_a);
+
+			let recv_b = tokio::time::timeout(Duration::from_millis(50), rx_b.recv()).await;
+			assert!(recv_b.is_err());
+
+			Ok(())
+		}
 	}
 }
 

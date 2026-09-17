@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 pub enum EntityType {
 	Run,
 	Aixc,
+	Wks,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelIds {
 	pub run_id: Option<Id>,
+	pub wks_id: Option<Id>,
 }

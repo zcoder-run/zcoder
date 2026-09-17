@@ -13,12 +13,17 @@ crates/zc-router/src/
   lib.rs          # module registry and public re-exports
   error.rs        # local Error and Result
   client.rs       # RouterClient frontend handle and correlation map
+  client_filter.rs# client_filter fan-out policy seam
+  client_info.rs  # ClientInfo metadata for attach handshake
   msg.rs          # RouterMsg, RouterMsgData, and the message channel
   exec.rs         # ExecCmd contract
   exec_event.rs   # ExecEvent contract and its channel
   model_change.rs # ModelChangeEvent contract and its channel
   model_rpc.rs    # ModelRpcCmd, ModelRpcReq, ModelRpcReply, ModelRpcError, and the client facade
   router.rs       # run_router and route
+  server.rs       # RouterServer, ConnWatch, and connection registry (server feature)
+  transport/      # socket_path policy, wire framing, client_conn
+  wks_resolver.rs # WksResolver trait for workspace identity
 ```
 
 `lib.rs` registers and re-exports the modules:
@@ -31,14 +36,22 @@ mod error;
 pub use error::{Error, Result};
 
 pub mod client;
+pub mod client_filter;
+pub mod client_info;
 pub mod exec;
 pub mod exec_event;
 pub mod model_change;
 pub mod model_rpc;
 pub mod msg;
 pub mod router;
+#[cfg(feature = "server")]
+pub mod server;
+pub mod transport;
+pub mod wks_resolver;
 
 pub use client::RouterClient;
+pub use client_filter::client_filter;
+pub use client_info::ClientInfo;
 pub use exec::ExecCmd;
 pub use exec_event::{ExecEvent, ExecEventRx, ExecEventTx, new_exec_event_channel};
 pub use model_change::{
@@ -50,6 +63,9 @@ pub use model_rpc::{
 };
 pub use msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx, new_router_msg_channel};
 pub use router::{route, run_router};
+#[cfg(feature = "server")]
+pub use server::{ConnWatch, RouterServer};
+pub use wks_resolver::WksResolver;
 
 // endregion: --- Modules
 ```
@@ -71,12 +87,15 @@ pub enum RouterMsgData {
 	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
 	ExecEvent(ExecEvent),
+	Attach(ClientInfo),
+	AttachOk(Id),
+	AttachErr(String),
 }
 ```
 
 - `msg_id` is a monotonic `MsgId` from the process-local source in `msg.rs`, so a message can be correlated without a shared clock.
 
-- `wks_id` identifies the workspace the message belongs to. The single-workspace topology uses `Id::default()` for now.
+- `wks_id` identifies the workspace the message belongs to, assigned by the server at attach time and stamped onto outgoing messages by `RouterClient::send`.
 
 - `RouterMsgData` is intentionally a mixed envelope: it carries commands toward Core and notifications coming back from it.
 
@@ -90,12 +109,15 @@ pub enum RouterMsgData {
 pub struct RouterClient { ... }
 
 impl RouterClient {
-	pub fn in_proc(router_msg_tx: RouterMsgTx, model_change_rx: ModelChangeRx, exec_event_rx: ExecEventRx) -> Self;
+	pub fn in_proc(router_msg_tx: RouterMsgTx, model_change_rx: ModelChangeRx, exec_event_rx: ExecEventRx, reply_rx: RouterMsgRx) -> Self;
+	#[cfg(feature = "client")]
+	pub async fn uds(socket_path: impl AsRef<Path>, client_info: ClientInfo) -> Result<Self>;
 	pub async fn send(&self, msg: RouterMsg) -> Result<()>;
 	pub fn take_model_change_rx(&self) -> Option<ModelChangeRx>;
 	pub fn take_exec_event_rx(&self) -> Option<ExecEventRx>;
 	pub fn register_pending(&self, msg_id: MsgId, res_tx: OnceTx<ModelRpcReply>);
 	pub fn complete_pending(&self, msg_id: MsgId, reply: ModelRpcReply);
+	pub fn wks_id(&self) -> Option<Id>;
 }
 ```
 
@@ -103,7 +125,28 @@ impl RouterClient {
 
 - `RouterClient` owns the correlation map `msg_id -> OnceTx<ModelRpcReply>`. Future wire transports will also manage request timeout and pending map sweep on connection loss inside `RouterClient`.
 
-- In future phases, `client` and `server` cargo features in `zc-router` will isolate the client implementation from server listeners, paired with a future `transport/` framing layer and `server.rs`.
+- When initialized over UDS via `RouterClient::uds`, the client executes an inline attach handshake before starting the reader task:
+  1. Sends `RouterMsgData::Attach(client_info)`.
+  2. Awaits `RouterMsgData::AttachOk(wks_id)` or `RouterMsgData::AttachErr(err)`.
+  3. On success, records `wks_id` in internal client state.
+  4. In `send(msg)`, automatically stamps `wks_id` onto outgoing messages if `msg.wks_id == Id::default()`.
+
+- The `client` and `server` cargo features isolate the client implementation from server listeners.
+
+## Router Server (Server Feature)
+
+`server.rs` provides `RouterServer` for accepting inbound client connections over a Unix Domain Socket:
+
+- **Initialization**: `RouterServer::bind(socket_path, exec_cmd_tx, model_rpc_cmd_tx, wks_resolver, model_change_rx, exec_event_rx)` verifies that no live server is running, unlinks stale socket files, and binds the socket.
+- **Per-Connection Handling**: Each client connection spawns an independent task:
+  - Wraps split read and write stream halves with `WireReader` and `WireWriter`.
+  - Performs the initial attach exchange: reads `Attach(client_info)`, queries `WksResolver::resolve(&client_info)`, and replies with `AttachOk(wks_id)`.
+  - Spawns a dedicated single-writer task draining a bounded per-connection response channel to prevent interleaved frame writes.
+  - Dispatches regular messages to the shared `route` function.
+- **Connection Registry and Fan-Out**:
+  - Base-originated `ModelChangeEvent` and `ExecEvent` notifications fan out to all attached clients that pass `client_filter(client_wks_id, msg)`.
+  - `client_filter` passes events whose `msg.wks_id` matches the client's `wks_id`, as well as unscoped events carrying default `wks_id`.
+- **ConnWatch**: Exposes connection tracking (`wait_for_zero`, `wait_for_nonzero`, `count`) allowing the hosting server process to manage idle shutdown grace periods.
 
 ## The Router Loop
 
@@ -119,7 +162,7 @@ pub async fn run_router(
 
 `route` dispatches one message:
 
-- `RouterMsgData::Exec(cmd)` forwards to the executor command channel.
+- `RouterMsgData::Exec(cmd)` wraps `cmd` with `msg.wks_id` into `ExecReq` and forwards to the executor command channel.
 
 - `RouterMsgData::ModelRpcReq(req)` converts into a local `ModelRpcCmd` with a local reply handle and forwards to the `ModelRpcCmd` channel. When the reply resolves, it completes the correlated pending response.
 

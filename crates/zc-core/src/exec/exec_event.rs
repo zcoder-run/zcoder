@@ -4,12 +4,21 @@ use crate::model::Id;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecReq {
+	pub wks_id: Id,
+	pub cmd: ExecCmd,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecCmd {
 	RunPrompt(String),
 }
 
-pub type ExecCmdRx = zc_common::event_base::MpscRx<ExecCmd>;
-pub type ExecCmdTx = zc_common::event_base::MpscTx<ExecCmd>;
+pub type ExecReqRx = zc_common::event_base::MpscRx<ExecReq>;
+pub type ExecReqTx = zc_common::event_base::MpscTx<ExecReq>;
+
+pub type ExecCmdRx = ExecReqRx;
+pub type ExecCmdTx = ExecReqTx;
 
 // endregion: --- ExecutorAction
 

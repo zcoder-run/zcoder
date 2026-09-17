@@ -4,15 +4,17 @@
 
 Define the base role: the implementation owner for persistence and execution.
 
-`zc-base` owns the SQLite database, the generic CRUD support, `ModelManager`, the model bus, the `RunBmc`/`AirBmc` accessors, the configuration, the prompts, and the executor. It also owns the Core-facing pump loops and the model RPC handler that serve the `zc-router` contract.
+`zc-base` owns the SQLite database, the generic CRUD support, `ModelManager`, the model bus, the `RunBmc`/`AirBmc`/`WksBmc` accessors, the configuration, the prompts, and the executor. It also owns the Core-facing pump loops and the model RPC handler that serve the `zc-router` contract.
 
 Only `zc-base` opens a `rusqlite::Connection` or runs SQL.
+
+In production, `zc base` runs as a dedicated server daemon process serving multiple frontends over `/tmp/zcoder-base.sock`.
 
 ## Module Layout
 
 ```text
 crates/zc-base/src/
-  lib.rs           # ZcBaseConfig, start_base_core, InProcBase, ZcBase
+  lib.rs           # ZcBaseConfig, start_base_core, start_base_parts, InProcBase, ZcBase
   config/          # Config and ConfigManager
   exec/            # Executor, ExecutorConfig, air_exec, and the exec error
   exec_event.rs    # Core exec event pump loop
@@ -20,6 +22,7 @@ crates/zc-base/src/
   model_change.rs  # Core model change pump loop
   model_rpc.rs     # model RPC handler
   prompts/         # system prompt composition
+  wks_resolver.rs  # BaseWksResolver implementing zc_router::WksResolver
 ```
 
 `lib.rs` registers the crate surface and re-exports the configuration and database handles:
@@ -34,11 +37,13 @@ pub mod model;
 mod model_change;
 mod model_rpc;
 mod prompts;
+mod wks_resolver;
 
 // endregion: --- Modules
 
 pub use config::{Config, ConfigManager};
 pub use model::Db;
+pub use wks_resolver::BaseWksResolver;
 ```
 
 ## Configuration
@@ -51,6 +56,11 @@ pub use model::Db;
 
 - The default config defines `[workspace] working_dir`, `[maestro] model`, `[model_sizes]`, and `[model_aliases]`.
 
+- For workspace-specific operations, `ConfigManager::resolve_for_wks` loads `<wks_dir>/.zcoder/config.toml` and layers it over the base configuration using `zc_common::jsons::merge`.
+  - Object fields merge recursively.
+  - Scalar and array values replace wholesale.
+  - Resolved configurations are cached per `wks_id` and invalidated if modification timestamps change.
+
 - `get_model(ref_name)` resolves size presets such as `$small`, alias chains, and reasoning suffixes such as `-low`, `-high`, and `-max`, with cycle detection.
 
 ## Database and Model
@@ -59,7 +69,11 @@ pub use model::Db;
 
 - The generic CRUD support (`crud_fns`, `db_bmc`, `prep_fields`) lives here.
 
-- The `RunBmc` and `AirBmc` accessors and their `DbBmc` impls live here. The entity structs and their derives stay in `zc-core`; the accessors and the SQL live here.
+- The `RunBmc`, `AirBmc`, and `WksBmc` accessors and their `DbBmc` impls live here. The entity structs and their derives stay in `zc-core`; the accessors and the SQL live here.
+
+- The `wks` table persists attached workspace directories:
+  - Columns: `id` BLOB PRIMARY KEY, `dir` TEXT UNIQUE NOT NULL, `label` TEXT, `ctime` INTEGER, `mtime` INTEGER.
+  - `WksBmc::get_or_create_by_dir(mm, dir, label)` canonicalizes directory paths and provides authoritative workspace identity.
 
 - The model layer `Error` and `Result` live here, so the database failure identity is owned by the crate that can actually fail.
 
@@ -101,7 +115,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 3. Workspace assets are re-synced and the config is hot reloaded before each run.
 
-4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wks_dir`.
+4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from the workspace's canonical directory `wks.dir` via `wks_id`.
 
 5. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
 
@@ -127,14 +141,24 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 - `exec_event.rs` owns the exec event pump loop that forwards executor lifecycle events to the frontends.
 
+## Standalone Server (zc base)
+
+The `zc base` command runs the base as a machine-wide standalone daemon process:
+
+- **Directory and Logging**: Runs out of `zbase_dir()` (`~/.config/zcoder-base/`) and logs exclusively to `zbase_log_file()` (`~/.config/zcoder-base/debug-log/log.txt`).
+- **Socket Ownership**: Binds exclusively to `/tmp/zcoder-base.sock`. If another live server responds, it aborts startup. Stale sockets from crashed servers are automatically unlinked.
+- **Idle Shutdown**: Uses `ConnWatch` from `RouterServer`. When connected client count drops to 0, an idle timer starts (`BASE_IDLE_GRACE_SECS` = 5s). If no client connects before expiration, the server shuts down cleanly. New connections cancel the shutdown.
+- **Signal Handling**: Captures `SIGINT` and `SIGTERM` to ensure `/tmp/zcoder-base.sock` is unlinked on termination.
+
 ## Startup and Lifecycle
 
 - `ZcBaseConfig` carries `wks_dir`, an optional `base_dir`, and an optional explicit `model`, and converts into `ExecutorConfig`.
 
 - `start_base_core(config)` starts Core initialization and the router dispatch loop: it creates the executor and spawns `executor.start()`, starts the model RPC handler, creates the router message channel, and spawns `run_router`.
 
-- `InProcBase` is the temporary in-process stand-in for the future `zc base` server. It owns what the base role owns (Core initialization and the router loop), returns `router_msg_tx()` for a frontend, and `into_event_rx()` for the model change and exec event receivers.
-- `InProcBase` builds the in-process `RouterClient` via `router_client()`, bundling the router message sender and the Core notification receivers into a single frontend handle.
+- `start_base_parts(config)` decomposes base initialization into `BaseParts` (`exec_cmd_tx`, `model_rpc_cmd_tx`, `wks_resolver`, `model_change_rx`, `exec_event_rx`), used by `RouterServer` to host the socket listener.
+
+- `InProcBase` is retained as an in-process testing harness and fallback mechanism.
 
 - `ZcBase` is the future server. It starts the same base role and returns `router_msg_tx()` and `exec_event_rx()`.
 

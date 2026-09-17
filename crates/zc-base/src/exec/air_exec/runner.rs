@@ -11,10 +11,11 @@ pub async fn exec_air_chat(
 	model: &str,
 	chat_req: ChatRequest,
 	run_id: Id,
+	wks_id: Option<Id>,
 	label: Option<&str>,
 ) -> Result<(ChatResponse, Id)> {
 	let start = EpochUs::now();
-	let air_c = prep_air_for_create(run_id, Some(model), &chat_req, start, label);
+	let air_c = prep_air_for_create(run_id, wks_id, Some(model), &chat_req, start, label);
 	let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 	let ai_start = EpochUs::now();
@@ -45,6 +46,7 @@ pub async fn exec_air_chat(
 /// Prepares an `AirForCreate` struct with request payloads and initial timestamps.
 pub fn prep_air_for_create(
 	run_id: Id,
+	wks_id: Option<Id>,
 	model_ov: Option<&str>,
 	chat_req: &ChatRequest,
 	start: EpochUs,
@@ -54,6 +56,7 @@ pub fn prep_air_for_create(
 
 	AirForCreate {
 		run_id,
+		wks_id,
 		label: label.map(String::from),
 		model_ov: model_ov.map(String::from),
 		model_upstream: None,
@@ -150,7 +153,7 @@ mod tests {
 		let now = EpochUs::now();
 
 		// -- Exec
-		let air_c = prep_air_for_create(run_id, Some("model-a"), &req, now, Some("step-1"));
+		let air_c = prep_air_for_create(run_id, None, Some("model-a"), &req, now, Some("step-1"));
 
 		// -- Check
 		assert_eq!(air_c.run_id, run_id);
@@ -244,6 +247,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
+			wks_id: None,
 			prompt: Some("full lifecycle test".to_string()),
 			answer: None,
 		};
@@ -252,7 +256,7 @@ mod tests {
 		// -- Exec: Prep & Create Air
 		let start = EpochUs::now();
 		let chat_req = genai::chat::ChatRequest::from_messages(vec![genai::chat::ChatMessage::user("count to three")]);
-		let air_c = prep_air_for_create(run_id, Some("test-model"), &chat_req, start, Some("step-label"));
+		let air_c = prep_air_for_create(run_id, None, Some("test-model"), &chat_req, start, Some("step-label"));
 		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 		// -- Check: Initial Air State
@@ -334,6 +338,7 @@ mod tests {
 	fn air_for_create(run_id: Id) -> AirForCreate {
 		AirForCreate {
 			run_id,
+			wks_id: None,
 			label: None,
 			model_ov: None,
 			model_upstream: None,

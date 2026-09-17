@@ -1,3 +1,4 @@
+use crate::client_info::ClientInfo;
 use crate::error::Result;
 use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
@@ -5,7 +6,7 @@ use crate::model_change::ModelChangeEvent;
 use crate::model_rpc::{ModelRpcCmdTx, ModelRpcReply, ModelRpcReq};
 use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx};
 use zc_common::MsgId;
-use zc_core::exec::ExecCmdTx;
+use zc_core::exec::{ExecCmdTx, ExecReq};
 use zc_core::model::Id;
 
 // region:    --- Router Loop
@@ -54,6 +55,15 @@ pub async fn route(
 		RouterMsgData::ExecEvent(event) => {
 			route_exec_event(msg_id, wks_id, event).await?;
 		}
+		RouterMsgData::Attach(info) => {
+			route_attach(msg_id, wks_id, info).await?;
+		}
+		RouterMsgData::AttachOk(assigned) => {
+			route_attach_ok(msg_id, wks_id, assigned).await?;
+		}
+		RouterMsgData::AttachErr(message) => {
+			route_attach_err(msg_id, wks_id, message).await?;
+		}
 	}
 
 	Ok(())
@@ -65,7 +75,7 @@ pub async fn route(
 
 async fn route_exec(exec_cmd_tx: &ExecCmdTx, msg_id: MsgId, wks_id: Id, cmd: ExecCmd) -> Result<()> {
 	tracing::debug!("->> route_exec msg_id={msg_id:?} wks_id={wks_id:?} cmd={cmd:?}");
-	exec_cmd_tx.send(cmd).await?;
+	exec_cmd_tx.send(ExecReq { wks_id, cmd }).await?;
 	Ok(())
 }
 
@@ -122,6 +132,21 @@ async fn route_model_rpc_res(
 			data: RouterMsgData::ModelRpcRes(reply),
 		})
 		.await?;
+	Ok(())
+}
+
+async fn route_attach(msg_id: MsgId, wks_id: Id, info: ClientInfo) -> Result<()> {
+	tracing::debug!("->> route_attach msg_id={msg_id:?} wks_id={wks_id:?} info={info:?}");
+	Ok(())
+}
+
+async fn route_attach_ok(msg_id: MsgId, wks_id: Id, assigned: Id) -> Result<()> {
+	tracing::debug!("->> route_attach_ok msg_id={msg_id:?} wks_id={wks_id:?} assigned={assigned:?}");
+	Ok(())
+}
+
+async fn route_attach_err(msg_id: MsgId, wks_id: Id, message: String) -> Result<()> {
+	tracing::debug!("->> route_attach_err msg_id={msg_id:?} wks_id={wks_id:?} message={message}");
 	Ok(())
 }
 

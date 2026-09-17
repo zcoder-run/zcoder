@@ -1,3 +1,4 @@
+use crate::client_info::ClientInfo;
 use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
 use crate::model_change::ModelChangeEvent;
@@ -26,6 +27,9 @@ pub enum RouterMsgData {
 	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
 	ExecEvent(ExecEvent),
+	Attach(ClientInfo),
+	AttachOk(Id),
+	AttachErr(String),
 }
 
 // endregion: --- Types
@@ -98,6 +102,46 @@ mod tests {
 		let back: RouterMsg = serde_json::from_str(&json)?;
 		assert_eq!(back.msg_id.as_u64(), 42);
 		assert!(matches!(back.data, RouterMsgData::ModelRpcReq(ModelRpcReq::DbSize)));
+		Ok(())
+	}
+
+	#[test]
+	fn test_msg_attach_envelope_serde_roundtrip() -> Result<()> {
+		// -- Attach
+		let attach = RouterMsg {
+			msg_id: MsgId::new(1),
+			wks_id: Id::default(),
+			data: RouterMsgData::Attach(ClientInfo::from_wks_dir("/home/dev/zcoder")),
+		};
+		let json = serde_json::to_string(&attach)?;
+		let back: RouterMsg = serde_json::from_str(&json)?;
+		match back.data {
+			RouterMsgData::Attach(info) => {
+				assert_eq!(info.wks_dir, "/home/dev/zcoder");
+				assert_eq!(info.label.as_deref(), Some("dev/zcoder"));
+			}
+			_ => panic!("unexpected deserialized variant"),
+		}
+
+		// -- AttachOk
+		let assigned = Id::try_from("00000000-0000-0000-0000-000000000007".to_string())?;
+		let attach_ok = RouterMsg::new(RouterMsgData::AttachOk(assigned.clone()));
+		let json = serde_json::to_string(&attach_ok)?;
+		let back: RouterMsg = serde_json::from_str(&json)?;
+		match back.data {
+			RouterMsgData::AttachOk(id) => assert_eq!(id, assigned),
+			_ => panic!("unexpected deserialized variant"),
+		}
+
+		// -- AttachErr
+		let attach_err = RouterMsg::new(RouterMsgData::AttachErr("attach failed".to_string()));
+		let json = serde_json::to_string(&attach_err)?;
+		let back: RouterMsg = serde_json::from_str(&json)?;
+		match back.data {
+			RouterMsgData::AttachErr(message) => assert_eq!(message, "attach failed"),
+			_ => panic!("unexpected deserialized variant"),
+		}
+
 		Ok(())
 	}
 }

@@ -7,6 +7,7 @@ pub mod model;
 mod model_change;
 mod model_rpc;
 mod prompts;
+mod wks_resolver;
 
 use crate::exec::{Executor, ExecutorConfig};
 // endregion: --- Modules
@@ -16,6 +17,7 @@ pub use model::Db;
 use model_change::run_model_change_loop;
 use model_rpc::run_model_rpc_handler;
 use simple_fs::SPath;
+pub use wks_resolver::BaseWksResolver;
 use zc_core::exec::ExecEventRx;
 use zc_router::{
 	ModelChangeRx, RouterClient, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
@@ -101,6 +103,50 @@ fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, Ex
 	Ok((router_msg_tx, exec_event_rx, reply_rx))
 }
 
+// endregion: --- Base Core
+
+// region:    --- Base Parts
+
+/// Base role components needed to run a `RouterServer`.
+pub struct BaseParts {
+	pub exec_cmd_tx: zc_core::exec::ExecCmdTx,
+	pub model_rpc_cmd_tx: zc_router::ModelRpcCmdTx,
+	pub wks_resolver: std::sync::Arc<dyn zc_router::WksResolver>,
+	pub model_change_rx: zc_router::ModelChangeRx,
+	pub exec_event_rx: zc_router::ExecEventRx,
+}
+
+/// Starts the base role components without the router loop, for use by a standalone server.
+pub fn start_base_parts(config: ZcBaseConfig) -> crate::exec::Result<BaseParts> {
+	// -- Core initialization
+	let (executor, exec_cmd_tx, exec_event_source_rx) = Executor::new(config.into_executor_config())?;
+	tokio::spawn(async move {
+		if let Err(err) = executor.start().await {
+			tracing::error!("executor error: {err}");
+		}
+	});
+
+	// -- Model RPC handler
+	let (model_rpc_cmd_tx, model_rpc_cmd_rx) = new_model_rpc_cmd_channel();
+	tokio::spawn(async move { run_model_rpc_handler(model_rpc_cmd_rx).await });
+
+	// -- Core-facing pump loops
+	let (model_change_tx, model_change_rx) = new_model_change_channel();
+	tokio::spawn(async move { run_model_change_loop(model_change_tx).await });
+
+	let (exec_event_tx, exec_event_rx) = new_exec_event_channel();
+	tokio::spawn(async move { run_exec_event_loop(exec_event_source_rx, exec_event_tx).await });
+
+	let wks_resolver = std::sync::Arc::new(BaseWksResolver);
+
+	Ok(BaseParts {
+		exec_cmd_tx,
+		model_rpc_cmd_tx,
+		wks_resolver,
+		model_change_rx,
+		exec_event_rx,
+	})
+}
 // endregion: --- Base Core
 
 // region:    --- InProcBase

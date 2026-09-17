@@ -23,6 +23,7 @@ const RUN_TABLE: (&str, &str) = (
 	"
 CREATE TABLE IF NOT EXISTS run (
 		id          BLOB PRIMARY KEY,
+		wks_id      BLOB,
 
 		prompt      TEXT,
 		answer      TEXT,
@@ -46,6 +47,7 @@ const AIR_TABLE: (&str, &str) = (
 CREATE TABLE IF NOT EXISTS aixc (
 		id          BLOB PRIMARY KEY,
 		run_id      BLOB NOT NULL,
+		wks_id      BLOB,
 		idx         INTEGER NOT NULL,
 		label       TEXT,
 		ctime       INTEGER NOT NULL,
@@ -79,7 +81,19 @@ CREATE TABLE IF NOT EXISTS aixc (
 ) STRICT, WITHOUT ROWID",
 );
 
-const ALL_MAIN_TABLES: &[(&str, &str)] = &[RUN_TABLE, AIR_TABLE];
+const WKS_TABLE: (&str, &str) = (
+	"wks",
+	"
+CREATE TABLE IF NOT EXISTS wks (
+		id     BLOB PRIMARY KEY,
+		dir    TEXT NOT NULL UNIQUE,
+		label  TEXT,
+		ctime  INTEGER NOT NULL,
+		mtime  INTEGER NOT NULL
+) STRICT, WITHOUT ROWID",
+);
+
+const ALL_MAIN_TABLES: &[(&str, &str)] = &[RUN_TABLE, AIR_TABLE, WKS_TABLE];
 
 // endregion: --- Main Tables
 

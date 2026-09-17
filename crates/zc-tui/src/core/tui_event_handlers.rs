@@ -288,6 +288,7 @@ mod tests {
 		let run_id = RunBmc::create(
 			mm,
 			zc_core::model::RunForCreate {
+				wks_id: None,
 				prompt: Some("Run error test".to_string()),
 				answer: None,
 			},
@@ -325,6 +326,7 @@ mod tests {
 		let run_id = RunBmc::create(
 			mm,
 			zc_core::model::RunForCreate {
+				wks_id: None,
 				prompt: Some("Run error model event test".to_string()),
 				answer: None,
 			},
@@ -369,6 +371,7 @@ mod tests {
 		let run_id = RunBmc::create(
 			mm,
 			zc_core::model::RunForCreate {
+				wks_id: None,
 				prompt: Some("AI request test".to_string()),
 				answer: None,
 			},
@@ -377,6 +380,7 @@ mod tests {
 
 		let air_c = zc_core::model::AirForCreate {
 			run_id,
+			wks_id: None,
 			label: Some("test_call".to_string()),
 			model_ov: Some("gemini-2.5-flash".to_string()),
 			model_upstream: None,
@@ -403,7 +407,7 @@ mod tests {
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Created,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id) },
+			zc_core::model::RelIds { run_id: Some(run_id), wks_id: None },
 		));
 		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
@@ -437,7 +441,7 @@ mod tests {
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Updated,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id) },
+			zc_core::model::RelIds { run_id: Some(run_id), wks_id: None },
 		));
 		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 

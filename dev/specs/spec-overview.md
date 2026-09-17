@@ -6,7 +6,7 @@
 
 - Summarizes the Cargo workspace, the crate taxonomy, the dependency direction, the runtime flow, and the shared event contracts.
 
-- Also covers the root binary crate `zcoder` (bin `zc`), which used to live in its own `spec-zcoder.md`: its CLI surface, startup orchestration, debug logging, and error model are described here.
+- Also covers the root binary crate `zcoder` (bin `zc`): CLI surface, `base` subcommand, startup orchestration, debug logging, and error model.
 
 - Then drill into the crate specific specs for detail:
 
@@ -36,6 +36,9 @@ flowchart TD
 
     Z --> T
     Z --> B
+    Z --> R
+    Z --> C
+    Z --> M
 
     T --> R
     T --> C
@@ -54,9 +57,9 @@ flowchart TD
 The complete dependency set:
 
 ```text
-zcoder (bin zc)  --> zc-tui, zc-base, zc-core, zc-router
+zcoder (bin zc)  --> zc-tui, zc-base, zc-core, zc-router, zc-common
 
-zc-tui           --> zc-router, zc-core, zc-common   (and zc-base, dev only)
+zc-tui           --> zc-router (features = ["client"]), zc-core, zc-common (and zc-base, dev only)
 zc-base          --> zc-router, zc-core, zc-common, zc-asset
 zc-router        --> zc-core, zc-common
 zc-core          --> zc-common
@@ -69,10 +72,10 @@ zc-asset         --> (no domain crates)
 | Crate               | Kind   | What it is for                                                                                                                              |
 | ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `zcoder` (bin `zc`) | binary | CLI parsing, startup orchestration, debug logging, and orchestration-level error conversion.                                                |
-| `zc-common`         | lib    | Dependency-light shared utilities: `Id`, `MsgId`, bounded mpsc primitives, time, cache, and yaml.                                           |
+ | `zc-common`         | lib    | Dependency-light shared utilities: `Id`, `MsgId`, bounded mpsc primitives, time, consts, dirs, jsons, and yaml.                             |
 | `zc-core`           | lib    | Shared data types and event contracts only: model types, entity structs plus their derives, `ModelChangeEvent`, `ExecCmd`, and `ExecEvent`. |
-| `zc-router`         | lib    | The Core message contract and routing: `RouterMsg`/`RouterMsgData`, the model RPC contract, the channel types, and `run_router`.            |
-| `zc-base`           | lib    | The server, owning all data change, work and all.                                                                                           |
+ | `zc-router`         | lib    | The Core message contract, wire framing, client handle (`RouterClient`), and listener server (`RouterServer`).                             |
+ | `zc-base`           | lib    | The server daemon, owning all data change, persistence (SQLite), executor, prompts, and workspace BMCs.                                      |
 | `zc-tui`            | lib    | Terminal UI lifecycle, app state, event handling, and rendering; reaches Core through the router.                                           |
 | `zc-asset`          | lib    | Embedded asset runtime used to materialize the `.zcoder` workspace.                                                                         |
 
@@ -83,6 +86,7 @@ Cargo.toml              # root package, bin `zc`, workspace members and shared d
 src/
   main.rs               # startup orchestration
   cmd.rs                # CLI parsing with clap
+  base_cmd.rs           # `zc base` daemon server entry point and lifecycle
   error.rs              # root crate error type
 crates/
   zc-common/            # shared pure types and small utilities
@@ -107,7 +111,7 @@ Critical rules:
 
 - `zc-tui` reaches persisted state only through the router contract, as owned data (`Run`, `Air`, events), never as a handle.
 
-- The root binary depends only on what it wires together: `zc-base`, `zc-router`, `zc-core`, and `zc-tui`.
+- The root binary depends only on what it wires together: `zc-base`, `zc-router`, `zc-core`, `zc-tui`, and `zc-common`.
 
 Details:
 
@@ -123,7 +127,22 @@ Details:
 
 ## Root Binary (zcoder)
 
-The root binary (`zcoder`, bin `zc`) is a thin startup shell. It parses command-line input, builds the base configuration, starts the in-process base, and hands control to the TUI. It does not own executor workflow logic, AI provider calls, file-change application, or TUI state and rendering.
+The root binary (`zcoder`, bin `zc`) acts as both the client entry point and the background server runner:
+
+1. **Default Invocation (`zc [prompt] [--dir <dir>]`)**:
+   - Resolves workspace root (`find_wks_dir`).
+   - Sets up debug logging in `<wks_dir>/.zcoder/debug-log/log.txt`.
+   - Connects to `/tmp/zcoder-base.sock` using `RouterClient::uds`.
+   - If not running, spawns `zc base` detached, retrying connection with backoff.
+   - Starts the TUI (`zc_tui::start_tui`).
+
+2. **Base Subcommand (`zc base`)**:
+   - Runs out of `zbase_dir` (`~/.config/zcoder-base/`).
+   - Sets up debug logging in `~/.config/zcoder-base/debug-log/log.txt`.
+   - Connect-probes socket to ensure single-instance exclusivity.
+   - Binds `RouterServer` on `/tmp/zcoder-base.sock`.
+   - Monitors active connections and shuts down after `BASE_IDLE_GRACE_SECS` when connection count reaches zero.
+   - Cleans up socket file on clean exit, `SIGINT`, or `SIGTERM`.
 
 Module layout:
 
@@ -181,17 +200,27 @@ Dependencies:
 ## Startup Sequence
 
 ```text
-root main
+root main (zc)
   -> parse CLI
-  -> resolve wks_dir as the current directory
-  -> build ZcBaseConfig::default().with_wks_dir(wks_dir)
-  -> apply .with_base_dir(dir) when --dir is given
-  -> InProcBase::start(config) -> inproc_base
-  -> inproc_base.router_client() -> router_client
+  -> if command == Some(SubCmd::Base) -> run_base_cmd()
+  -> resolve wks_dir via find_wks_dir(&from_dir)
+  -> init tracing to wks_log_file(&wks_dir)
+  -> connect_or_spawn(/tmp/zcoder-base.sock, client_info)
+       -> RouterClient::uds connect probe
+       -> if offline: spawn detached `current_exe() base` and retry with backoff
+       -> Attach handshake: send ClientInfo, receive AttachOk(wks_id)
   -> zc_tui::start_tui(router_client, cli_cmd.prompt).await
 ```
 
-`InProcBase` is the temporary in-process stand-in for the future `zc base` server. It starts the same base role that `ZcBase` starts, so the later process split removes code from one place instead of untangling the UI.
+## Shared Constants
+
+All path names, directory markers, socket paths, and timeouts are centralized in `zc-common::consts`:
+- `BASE_SOCK_PATH`: `/tmp/zcoder-base.sock`
+- `ZBASE_DIR_NAME`: `zcoder-base`
+- `CONFIG_DIR_NAME`: `.config`
+- `WKS_MARKER_DIR_NAME`: `.zcoder`
+- `BASE_IDLE_GRACE_SECS`: `5`
+- Path helpers live in `zc_common::dirs`.
 
 ## Event Contracts
 
@@ -209,11 +238,19 @@ pub enum RouterMsgData {
     ModelChange(ModelChangeEvent),
     Exec(ExecCmd),
     ExecEvent(ExecEvent),
+    Attach(ClientInfo),
+    AttachOk(Id),
+    AttachErr(String),
 }
 
 // zc-core::exec
 pub enum ExecCmd {
     RunPrompt(String),
+}
+
+pub struct ExecReq {
+    pub wks_id: Id,
+    pub cmd: ExecCmd,
 }
 
 pub enum ExecEvent {
@@ -227,7 +264,7 @@ pub struct ModelChangeEvent {
     entity: EntityType,   // Run, Aixc, ...
     action: EntityAction, // Created, Updated, ...
     id: Option<Id>,
-    rel_ids: RelIds,
+    rel_ids: RelIds,      // includes wks_id: Option<Id>
 }
 
 // zc-tui::core
@@ -256,22 +293,19 @@ pub enum AppActionEvent {
 
 ```text
 CLI parse (zcoder)
-  -> ZcBaseConfig (wks_dir, optional base_dir, optional model)
-  -> InProcBase::start -> inproc_base.router_client()
+  -> connect_or_spawn(/tmp/zcoder-base.sock) -> RouterClient::uds
   -> zc_tui::start_tui(router_client, ...)
        -> tui_impl: ratatui init, TuiEvent channel, model event loop,
                     exec event loop, terminal reader, ping timer
        -> tui_loop: draw -> recv TuiEvent -> debounce -> handle
 ```
 
-Action flow:
+Action flow across processes:
 
 ```text
 Terminal input -> TuiEvent::Term  -> tui_event_handlers
-App intent     -> TuiEvent::Action -> state + RouterClient -> router -> base
-Base           -> TuiEvent::Exec  -> state update
-Model change   -> TuiEvent::Model -> state update
-Timer          -> TuiEvent::Tick  -> state update
+App intent     -> TuiEvent::Action -> state + RouterClient -> [UDS wire] -> RouterServer -> base
+Base           -> event fanout -> client_filter(wks_id) -> [UDS wire] -> RouterClient -> TuiEvent::Exec / Model -> state update
 ```
 
 ## Execution Pipeline

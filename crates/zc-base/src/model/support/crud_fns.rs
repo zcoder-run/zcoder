@@ -49,6 +49,7 @@ where
 	Ok(count)
 }
 
+#[allow(unused)]
 pub async fn update<MC>(mm: &ModelManager, id: Id, fields: SqliteFields) -> Result<usize>
 where
 	MC: DbBmc,

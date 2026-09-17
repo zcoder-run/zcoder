@@ -55,11 +55,16 @@ impl Deref for Config {
 pub struct ConfigInner {
 	pub maestro_model: Option<String>,
 
-	pub workspace_working_dir: Option<SPath>,
+	pub wks: Option<WksConfig>,
 
 	pub model_sizes: Option<BTreeMap<String, String>>,
 
 	pub model_aliases: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WksConfig {
+	pub wks_dir: Option<SPath>,
 }
 
 // endregion: --- Types
@@ -72,14 +77,24 @@ impl Config {
 		Ok(Self(Arc::new(inner)))
 	}
 
+	pub fn layer_toml_strs(base_toml: &str, overlay_toml: &str) -> Result<Self> {
+		let inner = ConfigInner::layer_toml_strs(base_toml, overlay_toml)?;
+		Ok(Self(Arc::new(inner)))
+	}
+
 	pub fn with_maestro_model(mut self, model: impl Into<String>) -> Self {
 		Arc::make_mut(&mut self.0).maestro_model = Some(model.into());
 		self
 	}
 
-	pub fn with_workspace_working_dir(mut self, dir: impl Into<SPath>) -> Self {
-		Arc::make_mut(&mut self.0).workspace_working_dir = Some(dir.into());
+	pub fn with_wks_dir(mut self, dir: impl Into<SPath>) -> Self {
+		let wks = Arc::make_mut(&mut self.0).wks.get_or_insert_with(Default::default);
+		wks.wks_dir = Some(dir.into());
 		self
+	}
+
+	pub fn with_workspace_working_dir(self, dir: impl Into<SPath>) -> Self {
+		self.with_wks_dir(dir)
 	}
 
 	pub fn with_model_aliases(mut self, aliases: BTreeMap<String, String>) -> Self {
@@ -112,8 +127,12 @@ impl Config {
 		self.0.maestro_model()
 	}
 
+	pub fn wks_dir(&self) -> Option<&SPath> {
+		self.0.wks_dir()
+	}
+
 	pub fn workspace_working_dir(&self) -> Option<&SPath> {
-		self.0.workspace_working_dir()
+		self.0.wks_dir()
 	}
 
 	pub fn model_sizes(&self) -> Option<&BTreeMap<String, String>> {
@@ -144,6 +163,21 @@ impl ConfigInner {
 		Ok(inner)
 	}
 
+	pub fn layer_toml_strs(base_toml: &str, overlay_toml: &str) -> Result<Self> {
+		let base_toml_val: toml::Value = toml::from_str(base_toml)?;
+		let base_json: serde_json::Value =
+			serde_json::to_value(base_toml_val).map_err(|e| Error::custom(e.to_string()))?;
+
+		let overlay_toml_val: toml::Value = toml::from_str(overlay_toml)?;
+		let overlay_json: serde_json::Value =
+			serde_json::to_value(overlay_toml_val).map_err(|e| Error::custom(e.to_string()))?;
+
+		let merged_json = zc_common::jsons::merge(base_json, overlay_json);
+		let inner: ConfigInner =
+			serde_json::from_value(merged_json).map_err(|e| Error::custom(e.to_string()))?;
+		Ok(inner)
+	}
+
 	pub fn maestro_model(&self) -> &str {
 		match self.maestro_model.as_deref() {
 			Some(m) if !m.is_empty() => m,
@@ -151,16 +185,19 @@ impl ConfigInner {
 		}
 	}
 
-	pub fn workspace_working_dir(&self) -> Option<&SPath> {
-		self.workspace_working_dir.as_ref()
+	pub fn wks_dir(&self) -> Option<&SPath> {
+		self.wks.as_ref().and_then(|w| w.wks_dir.as_ref())
 	}
 
 	pub fn merge_with(&mut self, over: ConfigInner) {
 		if over.maestro_model.is_some() {
 			self.maestro_model = over.maestro_model;
 		}
-		if over.workspace_working_dir.is_some() {
-			self.workspace_working_dir = over.workspace_working_dir;
+		if let Some(over_wks) = over.wks {
+			if let Some(over_dir) = over_wks.wks_dir {
+				let wks = self.wks.get_or_insert_with(Default::default);
+				wks.wks_dir = Some(over_dir);
+			}
 		}
 		if let Some(over_sizes) = over.model_sizes {
 			let sizes = self.model_sizes.get_or_insert_with(BTreeMap::new);
@@ -252,11 +289,13 @@ impl From<ConfigInner> for Config {
 
 impl From<ConfigToml> for ConfigInner {
 	fn from(toml: ConfigToml) -> Self {
-		let workspace_working_dir = toml.workspace.and_then(|w| w.working_dir).map(SPath::from);
+		let wks = toml.wks.map(|w| WksConfig {
+			wks_dir: w.wks_dir.map(SPath::from),
+		});
 		let maestro_model = toml.maestro.and_then(|m| m.model);
 		Self {
 			maestro_model,
-			workspace_working_dir,
+			wks,
 			model_sizes: toml.model_sizes,
 			model_aliases: toml.model_aliases,
 		}
@@ -265,12 +304,12 @@ impl From<ConfigToml> for ConfigInner {
 
 impl From<ConfigInner> for ConfigToml {
 	fn from(inner: ConfigInner) -> Self {
-		let workspace = inner.workspace_working_dir.map(|p| WorkspaceToml {
-			working_dir: Some(p.as_str().to_string()),
+		let wks = inner.wks.map(|w| WksConfigToml {
+			wks_dir: w.wks_dir.map(|p| p.as_str().to_string()),
 		});
 		let maestro = inner.maestro_model.map(|m| MaestroToml { model: Some(m) });
 		Self {
-			workspace,
+			wks,
 			maestro,
 			model_sizes: inner.model_sizes,
 			model_aliases: inner.model_aliases,
@@ -301,7 +340,8 @@ fn peel_reasoning_suffixes(mut model: &str) -> (&str, Vec<&str>) {
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigToml {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	workspace: Option<WorkspaceToml>,
+	#[serde(rename = "workspace")]
+	wks: Option<WksConfigToml>,
 
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	maestro: Option<MaestroToml>,
@@ -314,9 +354,10 @@ struct ConfigToml {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct WorkspaceToml {
+struct WksConfigToml {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	working_dir: Option<String>,
+	#[serde(rename = "working_dir")]
+	wks_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -382,8 +423,39 @@ loop_b  = "loop_a"
 		// -- Check
 		assert_eq!(config.maestro_model(), "custom-model");
 		assert_eq!(config.workspace_working_dir().map(|p| p.as_str()), Some("./sub-crate"));
+		assert_eq!(config.wks_dir().map(|p| p.as_str()), Some("./sub-crate"));
 		let resolved = config.get_model("$small")?;
 		assert_eq!(resolved, "gpt-4o-mini");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_layer_toml_strs() -> Result<()> {
+		// -- Setup & Fixtures
+		let base = r#"
+[maestro]
+model = "$small"
+
+[model_aliases]
+lite = "base-lite-model"
+extra = "base-extra"
+"#;
+		let overlay = r#"
+[workspace]
+working_dir = "crates/zc-core"
+
+[model_aliases]
+lite = "override-lite-model"
+"#;
+
+		// -- Exec
+		let config = Config::layer_toml_strs(base, overlay)?;
+
+		// -- Check
+		assert_eq!(config.wks_dir().map(|p| p.as_str()), Some("crates/zc-core"));
+		assert_eq!(config.get_model("lite")?, "override-lite-model");
+		assert_eq!(config.get_model("extra")?, "base-extra");
 
 		Ok(())
 	}

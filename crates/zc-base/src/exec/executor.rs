@@ -6,7 +6,8 @@ use genai::chat::{ChatMessage, ChatRequest};
 use simple_fs::SPath;
 use value_ext::JsonValueExt;
 use zc_common::event_base::new_mpsc_bounded;
-use zc_core::exec::{ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx};
+use zc_core::exec::{ExecCmd, ExecCmdRx, ExecCmdTx, ExecEvent, ExecEventRx, ExecEventTx, ExecReq};
+use zc_core::model::Id;
 
 pub struct Executor {
 	action_rx: ExecCmdRx,
@@ -62,7 +63,7 @@ impl ExecutorConfig {
 
 impl Executor {
 	pub fn new(config: ExecutorConfig) -> Result<(Self, ExecCmdTx, ExecEventRx)> {
-		let (action_tx, action_rx) = new_mpsc_bounded::<ExecCmd>("executor_channel", 1000)?;
+		let (action_tx, action_rx) = new_mpsc_bounded::<ExecReq>("executor_channel", 1000)?;
 		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
 
 		// -- Sync project assets and load config
@@ -102,9 +103,10 @@ impl Executor {
 		let mm = get_model_manager()?;
 
 		while let Ok(action) = action_rx.recv().await {
-			match action {
+			let ExecReq { wks_id, cmd } = action;
+			match cmd {
 				ExecCmd::RunPrompt(prompt) => {
-					let _ = inner.handle_run_prompt(mm, prompt).await;
+					let _ = inner.handle_run_prompt(mm, wks_id, prompt).await;
 				}
 			}
 		}
@@ -114,9 +116,10 @@ impl Executor {
 }
 
 impl ExecutorInner {
-	async fn handle_run_prompt(&self, mm: &'static ModelManager, prompt: String) -> Result<()> {
+	async fn handle_run_prompt(&self, mm: &'static ModelManager, wks_id: Id, prompt: String) -> Result<()> {
 		// -- Create in the DB
 		let run_c = RunForCreate {
+			wks_id: Some(wks_id),
 			prompt: Some(prompt.clone()),
 			answer: None,
 		};
@@ -128,10 +131,25 @@ impl ExecutorInner {
 		let genai_client = self.genai_client.clone(); // Assumes your client is cheaply cloneable (Arc-backed)
 		let script_engine = self.script_engine.clone();
 
-		// -- Refresh project assets and config dynamically
-		let _ = zc_asset::update_zcoder_project(&self.wks_dir);
-		let _ = self.config_manager.refresh_if_modified();
-		let active_config = self.config_manager.get_config();
+		// -- Resolve workspace directory and config dynamically
+		let req_wks_dir = match crate::model::WksBmc::get(mm, wks_id).await {
+			Ok(wks) => SPath::from(wks.dir),
+			Err(_) => {
+				tracing::warn!("->> unknown wks_id '{wks_id}', falling back to default wks_dir");
+				self.wks_dir.clone()
+			}
+		};
+		let _ = zc_asset::update_zcoder_project(&req_wks_dir);
+
+		let active_config = self
+			.config_manager
+			.resolve_for_wks(mm, Some(wks_id))
+			.await
+			.unwrap_or_else(|e| {
+				tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
+				self.config_manager.get_config()
+			});
+
 		let model_ref = self.model.as_deref().unwrap_or(active_config.maestro_model());
 		let resolved_model = active_config.get_model(model_ref)?;
 
@@ -139,16 +157,16 @@ impl ExecutorInner {
 			if base_dir.is_absolute() {
 				base_dir.clone()
 			} else {
-				self.wks_dir.join(base_dir)
+				req_wks_dir.join(base_dir)
 			}
-		} else if let Some(config_working_dir) = active_config.workspace_working_dir() {
+		} else if let Some(config_working_dir) = active_config.wks_dir() {
 			if config_working_dir.is_absolute() {
 				config_working_dir.clone()
 			} else {
-				self.wks_dir.join(config_working_dir)
+				req_wks_dir.join(config_working_dir)
 			}
 		} else {
-			self.wks_dir.clone()
+			req_wks_dir.clone()
 		};
 
 		// Use an async block with an explicit type annotation
@@ -162,7 +180,7 @@ impl ExecutorInner {
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
 			// -- Execute Air Request
-			let (res, _air_id) = exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, None).await?;
+			let (res, _air_id) = exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, Some(wks_id), None).await?;
 
 			if let Some(raw_body) = res.captured_raw_body.as_ref() {
 				let content = raw_body.x_pretty().unwrap_or_else(|e| e.to_string());

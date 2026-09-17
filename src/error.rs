@@ -16,6 +16,12 @@ pub enum Error {
 	ZcBase(zc_base::exec::Error),
 
 	#[from]
+	ZcCommon(zc_common::Error),
+
+	#[from]
+	ZcRouter(zc_router::Error),
+
+	#[from]
 	ZcTui(zc_tui::Error),
 }
 

@@ -16,6 +16,7 @@ pub struct Air {
 	pub id: Id,
 
 	pub run_id: Id,
+	pub wks_id: Option<Id>,
 	pub idx: i64,
 
 	pub label: Option<String>,
@@ -49,6 +50,7 @@ pub struct Air {
 #[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct AirForCreate {
 	pub run_id: Id,
+	pub wks_id: Option<Id>,
 
 	pub label: Option<String>,
 
@@ -77,6 +79,7 @@ pub struct AirForCreate {
 
 #[derive(Debug, Default, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct AirForUpdate {
+	pub wks_id: Option<Id>,
 	pub label: Option<String>,
 
 	pub model_ov: Option<String>,

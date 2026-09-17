@@ -18,16 +18,27 @@ unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 # missing_docs = "warn"
 
+[features]
+default = ["client", "server"]
+client = []
+server = []
+
 [dependencies]
 # -- Sub Crates
 zc-core = { workspace = true }
 zc-common = { workspace = true }
 # -- Tracing
 tracing = { workspace = true }
+# -- Async
+tokio = { workspace = true, features = ["net", "io-util", "sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
+futures-util = { workspace = true }
+# -- FS
+simple-fs = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true }
+postcard = { workspace = true, features = ["use-std"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

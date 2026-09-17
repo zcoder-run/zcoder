@@ -23,7 +23,7 @@ unsafe_code = "forbid"
 zc-asset = { workspace = true }
 zc-common = { workspace = true }
 zc-core = { workspace = true }
-zc-router = { workspace = true }
+zc-router = { workspace = true, features = ["server"] }
 # -- AI
 genai = { workspace = true }
 aicost = { workspace = true }
@@ -41,6 +41,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 # -- Async
 tokio = { workspace = true }
+futures-util = { workspace = true }
 # -- Concurrency
 arc-swap = { workspace = true }
 # -- FS

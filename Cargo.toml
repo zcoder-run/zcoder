@@ -40,8 +40,9 @@ resolver = "3"
 [dependencies]
 # -- Sub Crates
 zc-base = { workspace = true }
+zc-common = { workspace = true }
 zc-core = { workspace = true }
-zc-router = { workspace = true }
+zc-router = { workspace = true, default-features = true }
 zc-tui = { workspace = true }
 # -- Tracing
 tracing = { workspace = true }
@@ -62,16 +63,19 @@ zc-asset = { version = "0.0.2", path = "crates/zc-asset" }
 zc-base = { version = "0.0.2", path = "crates/zc-base" }
 zc-core = { version = "0.0.2", path = "crates/zc-core" }
 zc-common = { version = "0.0.2", path = "crates/zc-common" }
-zc-router = { version = "0.0.2", path = "crates/zc-router" }
+zc-router = { version = "0.0.2", path = "crates/zc-router", default-features = false }
 zc-tui = { version = "0.0.2", path = "crates/zc-tui" }
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3.31"
+futures-util = "0.3"
 crossfire = "3.1.12"
 # -- Concurrency
 arc-swap = "1.7"
 # -- Serde & Content Formats
 serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["use-std"] }
 serde_json = "1"
 value-ext = "0.1.2"
 yaml_serde = "0.10.7"

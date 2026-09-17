@@ -59,10 +59,10 @@ Distinguish between user-facing surfaces and internal code identifiers for works
 ### Internal Code Identifiers
 
 - Use short PascalCase prefixes for Rust types:
-  - `WSpace` (for workspace engine components)
+  - `Wks` (for workspace components)
   - `WBench` (for workbench context and items)
   - `WTree` (for worktree structures)
-  - `WSpaceConfig` (for workspace configuration struct)
+  - `WksConfig` (for workspace configuration struct)
 - Use short snake_case prefixes for variables, struct fields, and function parameters:
   - `wks_dir: SPath` (instead of `workspace_dir` or `project_dir`)
   - `wbench_dir: SPath`
