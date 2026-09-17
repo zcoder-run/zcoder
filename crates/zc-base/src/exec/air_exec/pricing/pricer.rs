@@ -1,12 +1,6 @@
-// region:    --- Modules
-
 use crate::exec::air_exec::pricing::{AiPrice, ModelPricing};
 use genai::ModelIden;
 use genai::chat::Usage;
-
-// endregion: --- Modules
-
-// region:    --- Public Functions
 
 /// Computes the AI price for a given provider, model, and token usage using `aicost`.
 pub fn price_it(provider_type: &str, model_name: &str, usage: &Usage) -> Option<AiPrice> {
@@ -33,8 +27,6 @@ pub fn model_pricing(model_iden: &ModelIden) -> Option<ModelPricing> {
 		output_reasoning: pricing.output_reasoning,
 	})
 }
-
-// endregion: --- Public Functions
 
 // region:    --- Tests
 

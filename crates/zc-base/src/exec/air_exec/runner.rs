@@ -1,14 +1,8 @@
-// region:    --- Modules
-
 use crate::exec::Result;
 use crate::exec::air_exec::pricing::price_it;
 use crate::exec::air_exec::usage::{ExtractedUsage, extract_usage_metrics};
 use crate::model::{AirBmc, AirEndState, AirForCreate, AirForUpdate, EpochUs, Id, ModelManager, RunBmc};
 use genai::chat::{ChatOptions, ChatRequest, ChatResponse};
-
-// endregion: --- Modules
-
-// region:    --- Public Functions
 
 /// Executes an AI chat request, automatically recording creation, timing, and update on the Air model entity.
 pub async fn exec_air_chat(
@@ -135,8 +129,6 @@ pub fn prep_air_for_error(err_msg: impl Into<String>, end: EpochUs) -> AirForUpd
 	}
 }
 
-// endregion: --- Public Functions
-
 // region:    --- Tests
 
 #[cfg(test)]
@@ -144,11 +136,11 @@ mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 	use super::*;
+	use crate::model::{RunForCreate, get_model_manager};
 	use genai::ModelIden;
 	use genai::adapter::AdapterKind;
 	use genai::chat::{ChatMessage, ChatResponse, CompletionTokensDetails, MessageContent, PromptTokensDetails, Usage};
 	use uuid::Uuid;
-	use crate::model::{RunForCreate, get_model_manager};
 
 	#[test]
 	fn test_air_exec_prep_air_for_create() -> Result<()> {

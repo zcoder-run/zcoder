@@ -1,9 +1,8 @@
-use crate::model::get_model_bus;
 use crate::model::support::DbBmc;
 use crate::model::support::prep_fields::{
 	prep_fields_for_create, prep_fields_for_create_uid_included, prep_fields_for_update,
 };
-use crate::model::{EntityAction, Id, ModelChangeEvent, ModelManager, RelIds, Result};
+use crate::model::{EntityAction, Id, ModelChangeEvent, ModelManager, RelIds, Result, get_model_bus};
 use modql::SqliteFromRow;
 use modql::field::{HasSqliteFields, SqliteFields};
 use modql::filter::ListOptions;
@@ -221,7 +220,12 @@ where
 		.await?;
 
 	// -- Publish Model Event
-	get_model_bus().publish(ModelChangeEvent::new(MC::ENTITY_TYPE, EntityAction::Created, None, rel_ids));
+	get_model_bus().publish(ModelChangeEvent::new(
+		MC::ENTITY_TYPE,
+		EntityAction::Created,
+		None,
+		rel_ids,
+	));
 
 	Ok(res)
 }

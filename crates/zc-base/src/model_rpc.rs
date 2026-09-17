@@ -1,9 +1,5 @@
-// region:    --- Modules
-
 use crate::model::{AirBmc, ModelManager, RunBmc, get_model_manager};
 use zc_router::{ModelRpcCmd, ModelRpcCmdRx, ModelRpcError, ModelRpcReply, ModelRpcResult};
-
-// endregion: --- Modules
 
 // region:    --- Model RPC Handler
 

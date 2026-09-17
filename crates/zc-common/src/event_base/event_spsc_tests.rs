@@ -168,7 +168,10 @@ fn test_event_base_spsc_send_sync_waits_for_capacity() -> Result<()> {
 
 	// -- Check
 	assert_eq!(received, vec![1, 2]);
-	assert!(sender.is_finished(), "send_sync must complete once capacity is available");
+	assert!(
+		sender.is_finished(),
+		"send_sync must complete once capacity is available"
+	);
 	sender.join().map_err(|_e| "sender thread panicked")??;
 	Ok(())
 }

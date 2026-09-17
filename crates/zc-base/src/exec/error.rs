@@ -1,6 +1,5 @@
-use crate::prompts;
+use crate::{config, model, prompts};
 use derive_more::{Display, From};
-use crate::{config, model};
 
 pub type Result<T> = core::result::Result<T, Error>;
 

@@ -1,5 +1,3 @@
-// region:    --- Types
-
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct AiPrice {
 	pub cost: f64,
@@ -15,5 +13,3 @@ pub struct ModelPricing {
 	pub output_normal: f64,
 	pub output_reasoning: Option<f64>,
 }
-
-// endregion: --- Types

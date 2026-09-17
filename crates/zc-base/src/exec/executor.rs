@@ -1,7 +1,7 @@
-use crate::exec::{Error, Result, exec_air_chat};
-use crate::prompts;
 use crate::config::ConfigManager;
+use crate::exec::{Error, Result, exec_air_chat};
 use crate::model::{EpochUs, ModelManager, RunBmc, RunEndState, RunForCreate, RunForUpdate, get_model_manager};
+use crate::prompts;
 use genai::chat::{ChatMessage, ChatRequest};
 use simple_fs::SPath;
 use value_ext::JsonValueExt;

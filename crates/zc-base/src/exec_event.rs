@@ -1,11 +1,5 @@
-// region:    --- Modules
-
 use zc_core::exec::ExecEventRx;
 use zc_router::{RouterMsg, RouterMsgData, RouterMsgTx};
-
-// endregion: --- Modules
-
-// region:    --- Exec Event Loop
 
 /// Reads run lifecycle events from the Core executor status stream and forwards
 /// each one as a `RouterMsgData::ExecEvent` on the outbound Core message channel.
@@ -17,5 +11,3 @@ pub async fn run_exec_event_loop(mut exec_event_rx: ExecEventRx, exec_event_tx: 
 		}
 	}
 }
-
-// endregion: --- Exec Event Loop

@@ -9,21 +9,18 @@ mod model_rpc;
 mod prompts;
 
 use crate::exec::{Executor, ExecutorConfig};
+// endregion: --- Modules
+pub use config::{Config, ConfigManager};
 use exec_event::run_exec_event_loop;
+pub use model::Db;
 use model_change::run_model_change_loop;
 use model_rpc::run_model_rpc_handler;
-
 use simple_fs::SPath;
 use zc_core::exec::ExecEventRx;
 use zc_router::{
 	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
 	new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
 };
-
-// endregion: --- Modules
-
-pub use config::{Config, ConfigManager};
-pub use model::Db;
 
 // region:    --- Config
 

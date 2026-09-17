@@ -205,8 +205,8 @@ fn apply_air_state(state: &mut TuiState, air: &Air) {
 mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
-	use crate::core::_test_support::start_router_with_stub;
 	use super::*;
+	use crate::core::_test_support::start_router_with_stub;
 	use crossterm::event::{KeyEvent, KeyEventState};
 	use zc_base::model::{AirBmc, RunBmc, get_model_manager};
 	use zc_common::event_base::new_mpsc_bounded;

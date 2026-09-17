@@ -70,12 +70,7 @@ async fn route_exec_event(msg_id: MsgId, wks_id: Id, event: ExecEvent) -> Result
 	Ok(())
 }
 
-async fn route_model_rpc(
-	model_rpc_cmd_tx: &ModelRpcCmdTx,
-	msg_id: MsgId,
-	wks_id: Id,
-	cmd: ModelRpcCmd,
-) -> Result<()> {
+async fn route_model_rpc(model_rpc_cmd_tx: &ModelRpcCmdTx, msg_id: MsgId, wks_id: Id, cmd: ModelRpcCmd) -> Result<()> {
 	tracing::debug!("->> route_model_rpc msg_id={msg_id:?} wks_id={wks_id:?} cmd={cmd:?}");
 	model_rpc_cmd_tx.send(cmd).await?;
 

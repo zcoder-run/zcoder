@@ -97,9 +97,8 @@ mod tests {
 	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
 
 	use super::*;
-	use zc_common::event_base::new_mpsc_bounded;
-
 	use crate::core::_test_support::start_router_with_stub;
+	use zc_common::event_base::new_mpsc_bounded;
 
 	#[tokio::test]
 	async fn test_state_processor_sys_metrics_when_inactive() -> Result<()> {
