@@ -123,18 +123,20 @@ pub fn new_model_rpc_cmd_channel() -> (ModelRpcCmdTx, ModelRpcCmdRx) {
 
 // region:    --- Pending Correlation Map
 
-static IN_PROC_PENDING_MAP: LazyLock<Arc<Mutex<HashMap<MsgId, OnceTx<ModelRpcReply>>>>> =
+pub(crate) type PendingReplyMap = HashMap<MsgId, OnceTx<ModelRpcReply>>;
+
+static IN_PROC_PENDING_MAP: LazyLock<Arc<Mutex<PendingReplyMap>>> =
 	LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-pub(crate) fn in_proc_pending_map() -> Arc<Mutex<HashMap<MsgId, OnceTx<ModelRpcReply>>>> {
+pub(crate) fn in_proc_pending_map() -> Arc<Mutex<PendingReplyMap>> {
 	Arc::clone(&IN_PROC_PENDING_MAP)
 }
 
 pub(crate) fn complete_pending(msg_id: MsgId, reply: ModelRpcReply) {
-	if let Ok(mut map) = IN_PROC_PENDING_MAP.lock() {
-		if let Some(res_tx) = map.remove(&msg_id) {
-			res_tx.send(reply);
-		}
+	if let Ok(mut map) = IN_PROC_PENDING_MAP.lock()
+		&& let Some(res_tx) = map.remove(&msg_id)
+	{
+		res_tx.send(reply);
 	}
 }
 
@@ -228,7 +230,7 @@ mod list_options_serde {
 			let col = &after_start[..end_quote];
 			let after_end = &after_start[end_quote + 1..];
 
-			let next_delim = after_end.find(|c| c == '}' || c == ')' || c == '"').unwrap_or(after_end.len());
+			let next_delim = after_end.find(['}', ')', '"']).unwrap_or(after_end.len());
 			let segment = &after_end[..next_delim];
 			let dir = if segment.contains("Desc") || segment.contains("desc") {
 				"desc"
@@ -238,11 +240,7 @@ mod list_options_serde {
 			parts.push(format!("{col} {dir}"));
 			rest = &after_end[next_delim..];
 		}
-		if parts.is_empty() {
-			None
-		} else {
-			Some(parts.join(", "))
-		}
+		if parts.is_empty() { None } else { Some(parts.join(", ")) }
 	}
 
 	pub fn serialize<S>(options: &ListRunOptions, serializer: S) -> Result<S::Ok, S::Error>
@@ -252,7 +250,10 @@ mod list_options_serde {
 		let def = ListOptionsDef {
 			offset: options.offset,
 			limit: options.limit,
-			order_bys: options.order_bys.as_ref().and_then(|ob| order_bys_to_string(&format!("{ob:?}"))),
+			order_bys: options
+				.order_bys
+				.as_ref()
+				.and_then(|ob| order_bys_to_string(&format!("{ob:?}"))),
 		};
 		def.serialize(serializer)
 	}
@@ -262,12 +263,11 @@ mod list_options_serde {
 		D: Deserializer<'de>,
 	{
 		let def = ListOptionsDef::deserialize(deserializer)?;
-		let mut options = ListRunOptions::default();
-		options.offset = def.offset;
-		options.limit = def.limit;
-		if let Some(order_bys) = def.order_bys {
-			options.order_bys = Some(order_bys.as_str().into());
-		}
+		let options = ListRunOptions {
+			offset: def.offset,
+			limit: def.limit,
+			order_bys: def.order_bys.map(|order_bys| order_bys.as_str().into()),
+		};
 		Ok(options)
 	}
 }
@@ -320,9 +320,7 @@ mod tests {
 			_ => panic!("unexpected deserialized variant"),
 		}
 
-		let mut options = ListRunOptions::default();
-		options.offset = Some(10);
-		options.limit = Some(20);
+		let mut options = ListRunOptions::default().with_offset(10).with_limit(20);
 		options.order_bys = Some("ctime desc".into());
 		let req_list = ModelRpcReq::RunList { options };
 		let json = serde_json::to_string(&req_list)?;

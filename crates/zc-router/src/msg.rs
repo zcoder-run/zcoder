@@ -19,6 +19,7 @@ pub struct RouterMsg {
 
 /// Payload carried by a [`RouterMsg`]. The variants are intentionally not all the same semantic kind.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum RouterMsgData {
 	ModelRpcReq(ModelRpcReq),
 	ModelRpcRes(ModelRpcReply),
