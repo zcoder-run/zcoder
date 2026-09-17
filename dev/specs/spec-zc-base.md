@@ -134,6 +134,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 - `start_base_core(config)` starts Core initialization and the router dispatch loop: it creates the executor and spawns `executor.start()`, starts the model RPC handler, creates the router message channel, and spawns `run_router`.
 
 - `InProcBase` is the temporary in-process stand-in for the future `zc base` server. It owns what the base role owns (Core initialization and the router loop), returns `router_msg_tx()` for a frontend, and `into_event_rx()` for the model change and exec event receivers.
+- `InProcBase` builds the in-process `RouterClient` via `router_client()`, bundling the router message sender and the Core notification receivers into a single frontend handle.
 
 - `ZcBase` is the future server. It starts the same base role and returns `router_msg_tx()` and `exec_event_rx()`.
 

@@ -144,9 +144,7 @@ Responsibilities:
 
 - start the base role through `zc_base::InProcBase::start`
 
-- take the router message sender and the model change and exec event receivers from the base
-
-- start the terminal UI through `zc_tui::start_tui`
+- obtain the single `RouterClient` from the base and pass it to `zc_tui::start_tui`
 
 - own only orchestration-level error conversion
 
@@ -189,9 +187,8 @@ root main
   -> build ZcBaseConfig::default().with_wspace_dir(wspace_dir)
   -> apply .with_base_dir(dir) when --dir is given
   -> InProcBase::start(config) -> inproc_base
-  -> inproc_base.router_msg_tx() -> router_msg_tx
-  -> inproc_base.into_event_rx() -> (model_change_rx, exec_event_rx)
-  -> zc_tui::start_tui(router_msg_tx, model_change_rx, exec_event_rx, cli_cmd.prompt).await
+  -> inproc_base.router_client() -> router_client
+  -> zc_tui::start_tui(router_client, cli_cmd.prompt).await
 ```
 
 `InProcBase` is the temporary in-process stand-in for the future `zc base` server. It starts the same base role that `ZcBase` starts, so the later process split removes code from one place instead of untangling the UI.
@@ -199,6 +196,21 @@ root main
 ## Event Contracts
 
 ```rust
+// zc-router::msg
+pub struct RouterMsg {
+    pub msg_id: MsgId,
+    pub wks_id: Id,
+    pub data: RouterMsgData,
+}
+
+pub enum RouterMsgData {
+    ModelRpcReq(ModelRpcReq),
+    ModelRpcRes(ModelRpcReply),
+    ModelChange(ModelChangeEvent),
+    Exec(ExecCmd),
+    ExecEvent(ExecEvent),
+}
+
 // zc-core::exec
 pub enum ExecCmd {
     RunPrompt(String),
@@ -236,7 +248,7 @@ pub enum AppActionEvent {
 
 - Executor command and event channels are aliased as `ExecCmdTx`/`ExecCmdRx` and `ExecEventTx`/`ExecEventRx`.
 
-- Model RPC commands and replies use the `zc-router` channel types, and `zc-base` serves them through `run_model_rpc_handler`.
+- Model RPC requests and replies use `ModelRpcReq` and `ModelRpcReply`, correlated by `msg_id` on `RouterMsg`.
 
 - All UI signals share one `TuiEvent` stream so terminal input, actions, executor status, model changes, and ticks stay ordered in the UI loop.
 
@@ -245,8 +257,8 @@ pub enum AppActionEvent {
 ```text
 CLI parse (zcoder)
   -> ZcBaseConfig (wspace_dir, optional base_dir, optional model)
-  -> InProcBase::start -> router_msg_tx, model_change_rx, exec_event_rx
-  -> zc_tui::start_tui(...)
+  -> InProcBase::start -> inproc_base.router_client()
+  -> zc_tui::start_tui(router_client, ...)
        -> tui_impl: ratatui init, TuiEvent channel, model event loop,
                     exec event loop, terminal reader, ping timer
        -> tui_loop: draw -> recv TuiEvent -> debounce -> handle
@@ -256,7 +268,7 @@ Action flow:
 
 ```text
 Terminal input -> TuiEvent::Term  -> tui_event_handlers
-App intent     -> TuiEvent::Action -> state + RouterMsgTx -> router -> base
+App intent     -> TuiEvent::Action -> state + RouterClient -> router -> base
 Base           -> TuiEvent::Exec  -> state update
 Model change   -> TuiEvent::Model -> state update
 Timer          -> TuiEvent::Tick  -> state update

@@ -67,6 +67,15 @@ mod tests {
 
 		Ok(())
 	}
+
+	#[test]
+	fn test_id_serde_roundtrip() -> Result<()> {
+		let id = Id(Uuid::now_v7());
+		let json = serde_json::to_string(&id)?;
+		let id_de: Id = serde_json::from_str(&json)?;
+		assert_eq!(id, id_de);
+		Ok(())
+	}
 }
 
 // endregion: --- Tests

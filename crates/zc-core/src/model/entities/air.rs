@@ -4,13 +4,14 @@ use crate::model::{EpochUs, Id};
 use modql::SqliteFromRow;
 use modql::field::Fields;
 use modql::filter::ListOptions;
+use serde::{Deserialize, Serialize};
 
 // endregion: --- Modules
 
 // region:    --- Types
 
 /// AI Request
-#[derive(Debug, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct Air {
 	pub id: Id,
 
@@ -45,7 +46,7 @@ pub struct Air {
 	pub end_state: Option<String>,
 }
 
-#[derive(Debug, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct AirForCreate {
 	pub run_id: Id,
 
@@ -74,7 +75,7 @@ pub struct AirForCreate {
 	pub end: Option<EpochUs>,
 }
 
-#[derive(Debug, Default, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Default, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct AirForUpdate {
 	pub label: Option<String>,
 
@@ -102,7 +103,7 @@ pub struct AirForUpdate {
 }
 
 /// End state for an AI execution.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, Serialize, Deserialize)]
 pub enum AirEndState {
 	#[display("success")]
 	Success,

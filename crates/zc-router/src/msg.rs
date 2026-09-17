@@ -1,7 +1,8 @@
 use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
 use crate::model_change::ModelChangeEvent;
-use crate::model_rpc::ModelRpcCmd;
+use crate::model_rpc::{ModelRpcReply, ModelRpcReq};
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zc_common::MsgId;
 use zc_core::model::Id;
@@ -9,7 +10,7 @@ use zc_core::model::Id;
 // region:    --- Types
 
 /// Generic envelope carrying messages between frontends (TUI, base) and Core.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterMsg {
 	pub msg_id: MsgId,
 	pub wks_id: Id,
@@ -17,9 +18,10 @@ pub struct RouterMsg {
 }
 
 /// Payload carried by a [`RouterMsg`]. The variants are intentionally not all the same semantic kind.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RouterMsgData {
-	ModelRpc(ModelRpcCmd),
+	ModelRpcReq(ModelRpcReq),
+	ModelRpcRes(ModelRpcReply),
 	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
 	ExecEvent(ExecEvent),
@@ -81,6 +83,20 @@ mod tests {
 		assert_eq!(msg.msg_id.as_u64(), 7);
 		assert!(matches!(msg.data, RouterMsgData::Exec(_)));
 
+		Ok(())
+	}
+
+	#[test]
+	fn test_msg_router_msg_serde_roundtrip() -> Result<()> {
+		let msg = RouterMsg {
+			msg_id: MsgId::new(42),
+			wks_id: Id::default(),
+			data: RouterMsgData::ModelRpcReq(ModelRpcReq::DbSize),
+		};
+		let json = serde_json::to_string(&msg)?;
+		let back: RouterMsg = serde_json::from_str(&json)?;
+		assert_eq!(back.msg_id.as_u64(), 42);
+		assert!(matches!(back.data, RouterMsgData::ModelRpcReq(ModelRpcReq::DbSize)));
 		Ok(())
 	}
 }

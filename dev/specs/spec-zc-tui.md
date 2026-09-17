@@ -29,19 +29,17 @@ The scope covers the top-level TUI module, the core runtime modules, shared supp
 
 ## Dependency and Public API
 
-`zc-tui` depends on `zc-router` for the Core message contract (`RouterMsgTx`, `ModelChangeRx`, `RouterMsgRx`, `ModelRpcCmd`, and the model RPC client facade), on `zc-core` for the shared types and event contracts it renders (`Run`, `Air`, `ExecEvent`), and on `zc-common` where it needs shared helpers.
+`zc-tui` depends on `zc-router` for the Core message contract and client handle (`RouterClient`, `ModelRpcReq`, `ModelRpcReply`, and the model RPC client facade), on `zc-core` for the shared types and event contracts it renders (`Run`, `Air`, `ExecEvent`), and on `zc-common` where it needs shared helpers.
 
 `zc-base` is a dev-dependency only. The tests seed a run and an air through the `zc-base` owners, while production code never depends on `zc-base`.
 
-The TUI reaches persisted state only through the router contract, and only as owned data (`Run`, `Air`, model change events). It never holds a database handle, a model manager, or an entity accessor.
+The TUI reaches persisted state and Core operations exclusively through `RouterClient`, and only as owned data (`Run`, `Air`, model change events). It never directly accesses `RouterMsgTx`, `ModelChangeRx`, `RouterMsgRx`, database handles, model managers, or entity accessors.
 
 The public entry point is the only exported TUI API:
 
 ```rust
 pub async fn start_tui(
-	router_msg_tx: RouterMsgTx,
-	model_change_rx: ModelChangeRx,
-	exec_event_rx: RouterMsgRx,
+	client: RouterClient,
 	initial_prompt: Option<String>,
 ) -> Result<()>;
 ```
@@ -101,7 +99,7 @@ Redraw request -> TuiEvent::DoRedraw -> tui_loop
 - initialize the terminal
 - clear the initial screen
 - create typed app channel wrappers such as `AppTx`
-- forward model change and exec events into the app event stream
+- claim model change and exec event receivers from `RouterClient` and forward into the app event stream
 - start terminal reader tasks
 - start ping timer tasks only when timed refreshes are needed
 - restore the terminal before returning
@@ -125,7 +123,7 @@ Loop responsibilities:
 - preserve ordered UI events
 - debounce or coalesce high-frequency non-UI events when introduced
 - treat redraw and tick events as low-priority signals
-- send executor actions through `ExecutorTx`
+- send executor and core messages through `RouterClient`
 - exit on `AppActionEvent::Quit`
 
 ### Terminal Reader (term_reader)
@@ -247,7 +245,7 @@ pub enum AppActionEvent {
   - clears the input
   - sets `waiting` to true
   - clears `last_error`
-  - sends the run request to Core through the router message sender
+  - sends the run request to Core through `RouterClient::send`
 
 ### Exec Event Behavior
 
@@ -261,8 +259,8 @@ The exec event receiver carries the run lifecycle events produced by the `zc-bas
 
 The model change receiver carries the persisted entity changes produced by `zc-base`.
 
-- a run change is re-read through the `run_get` RPC client and stored as the current run result
-- an air change is re-read through the `air_get` RPC client and refreshed into the work info, such as model name, elapsed time, tokens, and cost
+- a run change is re-read through `run_get(&client, id)` and stored as the current run result
+- an air change is re-read through `air_get(&client, id)` and refreshed into the work info, such as model name, elapsed time, tokens, and cost
 
 ## View
 

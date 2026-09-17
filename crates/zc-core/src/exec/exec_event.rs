@@ -1,8 +1,9 @@
 // region:    --- ExecutorAction
 
 use crate::model::Id;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecCmd {
 	RunPrompt(String),
 }
@@ -15,7 +16,7 @@ pub type ExecCmdTx = zc_common::event_base::MpscTx<ExecCmd>;
 // region:    --- ExecStatus
 
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecEvent {
 	RunStart(Id),
 	RunEnd(Id),

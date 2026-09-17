@@ -13,6 +13,8 @@ pub enum Error {
 	ZcCommon(zc_common::Error),
 	#[from]
 	CommonEvent(zc_common::event_base::EventBaseError),
+	#[from]
+	ZcRouter(zc_router::Error),
 
 	// -- Externals
 	#[from]

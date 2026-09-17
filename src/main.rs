@@ -49,9 +49,7 @@ async fn main() -> Result<()> {
 	let inproc_base = InProcBase::start(base_config)?;
 
 	// -- Running Tui application
-	let router_msg_tx = inproc_base.router_msg_tx();
-	let (model_change_rx, exec_event_rx) = inproc_base.into_event_rx();
-	zc_tui::start_tui(router_msg_tx, model_change_rx, exec_event_rx, cli_cmd.prompt).await?;
+	zc_tui::start_tui(inproc_base.router_client(), cli_cmd.prompt).await?;
 
 	Ok(())
 }

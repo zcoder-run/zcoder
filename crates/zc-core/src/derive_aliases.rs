@@ -24,6 +24,8 @@ derive_alias! {
 		derive_more::Deref,
 		modql::SqliteFromValue,
 		modql::SqliteToValue,
+		serde::Serialize,
+		serde::Deserialize,
 	)];
 
 	#[derive(ScalarEnum!)] = #[derive(

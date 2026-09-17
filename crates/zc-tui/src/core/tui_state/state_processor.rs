@@ -2,7 +2,7 @@
 use super::TuiState;
 use super::tui_state_base::format_duration_us;
 use crate::view::tblock::AiWorkInfo;
-use zc_router::{RouterMsgTx, db_size};
+use zc_router::{RouterClient, db_size};
 
 pub struct StateProcessor;
 
@@ -78,13 +78,13 @@ impl StateProcessor {
 		state.update_elapsed_time(ts);
 	}
 
-	pub async fn process_sys_metrics(state: &mut TuiState, router_msg_tx: &RouterMsgTx) {
+	pub async fn process_sys_metrics(state: &mut TuiState, client: &RouterClient) {
 		if !state.show_sys_states() {
 			return;
 		}
 
 		state.refresh_sys_state();
-		if let Ok(size) = db_size(router_msg_tx).await {
+		if let Ok(size) = db_size(client).await {
 			state.set_db_memory(size.max(0) as u64);
 		}
 	}
@@ -107,13 +107,14 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		assert!(!state.show_sys_states());
 		assert_eq!(state.memory(), 0);
 		assert_eq!(state.db_memory(), 0);
 
 		// -- Exec
-		StateProcessor::process_sys_metrics(&mut state, &router_msg_tx).await;
+		StateProcessor::process_sys_metrics(&mut state, &client).await;
 
 		// -- Check
 		assert_eq!(state.memory(), 0);
@@ -130,9 +131,10 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		// -- Exec
-		StateProcessor::process_sys_metrics(&mut state, &router_msg_tx).await;
+		StateProcessor::process_sys_metrics(&mut state, &client).await;
 
 		// -- Check
 		assert!(state.memory() > 0);

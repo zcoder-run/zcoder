@@ -90,7 +90,7 @@ udiffx = { version = "0.3", features = ["prompt"]}
 aiprog = { git = "https://github.com/zcoder-run/aiprog.git" }
 # -- DB
 rusqlite = { version = "0.40.0", features = ["bundled", "uuid", "serde_json", "serialize"] }
-modql = { version = "0.5.0", features = ["with-rusqlite"]}
+modql = { version = "0.5.0", features = ["with-rusqlite"] }
 # -- FS
 simple-fs = { version = "0.12"}
 walkdir = "2"
@@ -107,7 +107,7 @@ tracing-appender = "0.2"
 sysinfo = "0.33"
 # -- Others
 macro_rules_attribute = "0.2.2"
-uuid = {version = "1.18", features = ["v4", "v7", "fast-rng"]}
+uuid = {version = "1.18", features = ["v4", "v7", "fast-rng", "serde"]}
 derive_more = { version = "2", features = ["from","display","debug", "into", "deref"] }
 
 

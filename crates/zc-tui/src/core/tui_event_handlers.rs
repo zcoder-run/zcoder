@@ -8,13 +8,13 @@ use ratatui::layout::Position;
 use tracing::debug;
 use zc_core::exec::{ExecCmd, ExecEvent};
 use zc_core::model::{Air, ModelChangeEvent};
-use zc_router::{RouterMsg, RouterMsgData, RouterMsgTx, air_get, run_get};
+use zc_router::{RouterClient, RouterMsg, RouterMsgData, air_get, run_get};
 
 /// return `true` if needs quit
 pub async fn handle_tui_event(
 	state: &mut TuiState,
 	tui_tx: &TuiTx,
-	router_msg_tx: &RouterMsgTx,
+	client: &RouterClient,
 	app_event: TuiEvent,
 ) -> Result<bool> {
 	let should_quit = match app_event {
@@ -24,19 +24,19 @@ pub async fn handle_tui_event(
 		}
 
 		TuiEvent::Action(action) => {
-			if handle_app_action(state, router_msg_tx, action).await? {
+			if handle_app_action(state, client, action).await? {
 				return Ok(true);
 			}
 			false
 		}
 
 		TuiEvent::Exec(status) => {
-			handle_exec_status(state, router_msg_tx, status).await;
+			handle_exec_status(state, client, status).await;
 			false
 		}
 
 		TuiEvent::Model(model_event) => {
-			handle_model_event(state, router_msg_tx, model_event).await?;
+			handle_model_event(state, client, model_event).await?;
 			false
 		}
 
@@ -48,7 +48,7 @@ pub async fn handle_tui_event(
 		TuiEvent::DoRedraw => false,
 	};
 
-	StateProcessor::process_sys_metrics(state, router_msg_tx).await;
+	StateProcessor::process_sys_metrics(state, client).await;
 
 	Ok(should_quit)
 }
@@ -112,7 +112,7 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 
 pub async fn handle_app_action(
 	state: &mut TuiState,
-	router_msg_tx: &RouterMsgTx,
+	client: &RouterClient,
 	action: AppActionEvent,
 ) -> Result<bool> {
 	match action {
@@ -120,13 +120,13 @@ pub async fn handle_app_action(
 		AppActionEvent::RunPrompt(prompt) => {
 			StateProcessor::start_prompt_run(state);
 			let msg = RouterMsg::new(RouterMsgData::Exec(ExecCmd::RunPrompt(prompt)));
-			router_msg_tx.send(msg).await?;
+			client.send(msg).await?;
 			Ok(false)
 		}
 	}
 }
 
-pub async fn handle_exec_status(state: &mut TuiState, router_msg_tx: &RouterMsgTx, status: ExecEvent) {
+pub async fn handle_exec_status(state: &mut TuiState, client: &RouterClient, status: ExecEvent) {
 	match status {
 		ExecEvent::RunStart(id) => {
 			StateProcessor::apply_run_start(state);
@@ -137,7 +137,7 @@ pub async fn handle_exec_status(state: &mut TuiState, router_msg_tx: &RouterMsgT
 		}
 		ExecEvent::RunError(id) => {
 			let mut err_msg = "Error".to_string();
-			if let Ok(Some(run)) = run_get(router_msg_tx, id).await
+			if let Ok(Some(run)) = run_get(client, id).await
 				&& let Some(err) = run.error
 			{
 				err_msg = err;
@@ -149,12 +149,12 @@ pub async fn handle_exec_status(state: &mut TuiState, router_msg_tx: &RouterMsgT
 
 pub async fn handle_model_event(
 	state: &mut TuiState,
-	router_msg_tx: &RouterMsgTx,
+	client: &RouterClient,
 	model_event: ModelChangeEvent,
 ) -> Result<()> {
 	if model_event.entity == zc_core::model::EntityType::Run {
 		if let Some(run_id) = model_event.id
-			&& let Ok(Some(run)) = run_get(router_msg_tx, run_id).await
+			&& let Ok(Some(run)) = run_get(client, run_id).await
 		{
 			if let Some(prompt) = run.prompt {
 				state.set_last_prompt(Some(prompt));
@@ -168,7 +168,7 @@ pub async fn handle_model_event(
 		}
 	} else if model_event.entity == zc_core::model::EntityType::Aixc {
 		if let Some(air_id) = model_event.id
-			&& let Ok(Some(air)) = air_get(router_msg_tx, air_id).await
+			&& let Ok(Some(air)) = air_get(client, air_id).await
 		{
 			apply_air_state(state, &air);
 		} else {
@@ -219,6 +219,7 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		let f2_event = TuiEvent::Term(Event::Key(KeyEvent {
 			code: KeyCode::F(2),
@@ -229,7 +230,7 @@ mod tests {
 
 		// -- Exec
 		assert!(!state.show_sys_states());
-		let quit = handle_tui_event(&mut state, &tui_tx, &router_msg_tx, f2_event.clone()).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &client, f2_event.clone()).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -240,7 +241,7 @@ mod tests {
 		assert!(matches!(received, TuiEvent::DoRedraw));
 
 		// -- Exec (Toggle back)
-		let quit = handle_tui_event(&mut state, &tui_tx, &router_msg_tx, f2_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &client, f2_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -260,6 +261,7 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		let model_event = TuiEvent::Model(zc_core::model::ModelChangeEvent::new(
 			zc_core::model::EntityType::Run,
@@ -269,7 +271,7 @@ mod tests {
 		));
 
 		// -- Exec
-		let quit = handle_tui_event(&mut state, &tui_tx, &router_msg_tx, model_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -289,6 +291,7 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -310,7 +313,7 @@ mod tests {
 		.await?;
 
 		// -- Exec
-		handle_exec_status(&mut state, &router_msg_tx, ExecEvent::RunError(run_id)).await;
+		handle_exec_status(&mut state, &client, ExecEvent::RunError(run_id)).await;
 
 		// -- Check
 		assert!(!state.is_waiting());
@@ -328,6 +331,7 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		let mm = get_model_manager()?;
 		let run_id = RunBmc::create(
@@ -356,7 +360,7 @@ mod tests {
 		));
 
 		// -- Exec
-		let quit = handle_tui_event(&mut state, &tui_tx, &router_msg_tx, model_event).await?;
+		let quit = handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
 		// -- Check
 		assert!(!quit);
@@ -373,6 +377,7 @@ mod tests {
 		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
 		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
 		start_router_with_stub(router_msg_rx, exec_cmd_tx);
+		let client = RouterClient::from(router_msg_tx);
 
 		let mm = get_model_manager()?;
 
@@ -415,7 +420,7 @@ mod tests {
 			Some(air_id),
 			zc_core::model::RelIds { run_id: Some(run_id) },
 		));
-		handle_tui_event(&mut state, &tui_tx, &router_msg_tx, model_event).await?;
+		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
 		// -- Check: AI work info running
 		let info = state.ai_work_info().ok_or("should have ai work info")?;
@@ -423,7 +428,7 @@ mod tests {
 		assert_eq!(info.model.as_deref(), Some("gemini-2.5-flash"));
 
 		// -- Exec: Tick
-		handle_tui_event(&mut state, &tui_tx, &router_msg_tx, TuiEvent::Tick(2_500_000)).await?;
+		handle_tui_event(&mut state, &tui_tx, &client, TuiEvent::Tick(2_500_000)).await?;
 
 		// -- Setup: Update Aixc to Done with tokens
 		AirBmc::update(
@@ -449,7 +454,7 @@ mod tests {
 			Some(air_id),
 			zc_core::model::RelIds { run_id: Some(run_id) },
 		));
-		handle_tui_event(&mut state, &tui_tx, &router_msg_tx, model_event).await?;
+		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
 		// -- Check: AI work info completed with token counts, duration, and cost
 		let info = state.ai_work_info().ok_or("should have ai work info")?;

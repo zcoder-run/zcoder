@@ -26,3 +26,8 @@ zc-common = { workspace = true }
 tracing = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
 use crate::model_change::ModelChangeEvent;
-use crate::model_rpc::{ModelRpcCmd, ModelRpcCmdTx};
+use crate::model_rpc::{ModelRpcCmdTx, ModelRpcReply, ModelRpcReq};
 use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx};
 use zc_common::MsgId;
 use zc_core::exec::ExecCmdTx;
@@ -36,8 +36,11 @@ pub async fn route(exec_cmd_tx: &ExecCmdTx, model_rpc_cmd_tx: &ModelRpcCmdTx, ms
 		RouterMsgData::Exec(cmd) => {
 			route_exec(exec_cmd_tx, msg_id, wks_id, cmd).await?;
 		}
-		RouterMsgData::ModelRpc(cmd) => {
-			route_model_rpc(model_rpc_cmd_tx, msg_id, wks_id, cmd).await?;
+		RouterMsgData::ModelRpcReq(req) => {
+			route_model_rpc_req(model_rpc_cmd_tx, msg_id, wks_id, req).await?;
+		}
+		RouterMsgData::ModelRpcRes(reply) => {
+			route_model_rpc_res(msg_id, wks_id, reply).await?;
 		}
 		RouterMsgData::ModelChange(event) => {
 			route_model_change(msg_id, wks_id, event).await?;
@@ -70,10 +73,34 @@ async fn route_exec_event(msg_id: MsgId, wks_id: Id, event: ExecEvent) -> Result
 	Ok(())
 }
 
-async fn route_model_rpc(model_rpc_cmd_tx: &ModelRpcCmdTx, msg_id: MsgId, wks_id: Id, cmd: ModelRpcCmd) -> Result<()> {
-	tracing::debug!("->> route_model_rpc msg_id={msg_id:?} wks_id={wks_id:?} cmd={cmd:?}");
+async fn route_model_rpc_req(
+	model_rpc_cmd_tx: &ModelRpcCmdTx,
+	msg_id: MsgId,
+	wks_id: Id,
+	req: ModelRpcReq,
+) -> Result<()> {
+	tracing::debug!("->> route_model_rpc_req msg_id={msg_id:?} wks_id={wks_id:?} req={req:?}");
+	let (res_tx, res_rx) = zc_common::event_base::new_once("model_rpc_local");
+	let cmd = req.into_cmd(res_tx);
 	model_rpc_cmd_tx.send(cmd).await?;
 
+	tokio::spawn(async move {
+		if let Ok(reply) = res_rx.recv().await {
+			let _res_msg = RouterMsg {
+				msg_id,
+				wks_id,
+				data: RouterMsgData::ModelRpcRes(reply.clone()),
+			};
+			crate::model_rpc::complete_pending(msg_id, reply);
+		}
+	});
+
+	Ok(())
+}
+
+async fn route_model_rpc_res(msg_id: MsgId, wks_id: Id, reply: ModelRpcReply) -> Result<()> {
+	tracing::debug!("->> route_model_rpc_res msg_id={msg_id:?} wks_id={wks_id:?} reply={reply:?}");
+	crate::model_rpc::complete_pending(msg_id, reply);
 	Ok(())
 }
 

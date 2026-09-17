@@ -33,3 +33,23 @@ impl TryFrom<String> for EpochUs {
 		Ok(EpochUs(id))
 	}
 }
+
+// region:    --- Tests
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>;
+
+	#[test]
+	fn test_epoch_us_serde_roundtrip() -> Result<()> {
+		let epoch = EpochUs::now();
+		let json = serde_json::to_string(&epoch)?;
+		let epoch_de: EpochUs = serde_json::from_str(&json)?;
+		assert_eq!(epoch, epoch_de);
+		Ok(())
+	}
+}
+
+// endregion: --- Tests

@@ -18,8 +18,8 @@ use model_rpc::run_model_rpc_handler;
 use simple_fs::SPath;
 use zc_core::exec::ExecEventRx;
 use zc_router::{
-	ModelChangeRx, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
-	new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
+	ModelChangeRx, RouterClient, RouterMsgRx, RouterMsgTx, new_exec_event_channel,
+	new_model_change_channel, new_model_rpc_cmd_channel, new_router_msg_channel, run_router,
 };
 
 // region:    --- Config
@@ -136,6 +136,11 @@ impl InProcBase {
 			model_change_rx,
 			exec_event_rx,
 		})
+	}
+
+	/// Returns the in-process router client for a frontend.
+	pub fn router_client(self) -> RouterClient {
+		RouterClient::in_proc(self.router_msg_tx, self.model_change_rx, self.exec_event_rx)
 	}
 
 	/// Returns a Core message sender for a frontend (commands and requests).

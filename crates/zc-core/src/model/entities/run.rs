@@ -2,10 +2,11 @@ use crate::model::{EpochUs, Id};
 use modql::SqliteFromRow;
 use modql::field::Fields;
 use modql::filter::ListOptions;
+use serde::{Deserialize, Serialize};
 
 // region:    --- Types
 
-#[derive(Debug, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct Run {
 	pub id: Id,
 
@@ -21,13 +22,13 @@ pub struct Run {
 	pub air_idx_seq: i64,
 }
 
-#[derive(Debug, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct RunForCreate {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Fields, SqliteFromRow)]
+#[derive(Debug, Default, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct RunForUpdate {
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
@@ -38,7 +39,7 @@ pub struct RunForUpdate {
 }
 
 /// End state for a Run execution.
-#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, Serialize, Deserialize)]
 pub enum RunEndState {
 	#[display("success")]
 	Success,

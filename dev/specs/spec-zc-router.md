@@ -12,11 +12,12 @@ Define the Core message contract and the routing layer between the frontends (th
 crates/zc-router/src/
   lib.rs          # module registry and public re-exports
   error.rs        # local Error and Result
+  client.rs       # RouterClient frontend handle and correlation map
   msg.rs          # RouterMsg, RouterMsgData, and the message channel
   exec.rs         # ExecCmd contract
   exec_event.rs   # ExecEvent contract and its channel
   model_change.rs # ModelChangeEvent contract and its channel
-  model_rpc.rs    # ModelRpcCmd, ModelRpcReply, ModelRpcError, and the client facade
+  model_rpc.rs    # ModelRpcCmd, ModelRpcReq, ModelRpcReply, ModelRpcError, and the client facade
   router.rs       # run_router and route
 ```
 
@@ -29,6 +30,7 @@ mod error;
 
 pub use error::{Error, Result};
 
+pub mod client;
 pub mod exec;
 pub mod exec_event;
 pub mod model_change;
@@ -36,14 +38,15 @@ pub mod model_rpc;
 pub mod msg;
 pub mod router;
 
+pub use client::RouterClient;
 pub use exec::ExecCmd;
-pub use exec_event::{ExecEvent, new_exec_event_channel};
+pub use exec_event::{ExecEvent, ExecEventRx, ExecEventTx, new_exec_event_channel};
 pub use model_change::{
 	ModelChangeEvent, ModelChangeRx, ModelChangeTx, new_model_change_channel,
 };
 pub use model_rpc::{
-	ModelRpcCmd, ModelRpcCmdRx, ModelRpcCmdTx, ModelRpcError, ModelRpcReply, ModelRpcResult, air_get, air_list,
-	db_size, new_model_rpc_cmd_channel, run_get, run_list,
+	ModelRpcCmd, ModelRpcCmdRx, ModelRpcCmdTx, ModelRpcError, ModelRpcReply, ModelRpcReq, ModelRpcResult, air_get,
+	air_list, db_size, new_model_rpc_cmd_channel, run_get, run_list,
 };
 pub use msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx, new_router_msg_channel};
 pub use router::{route, run_router};
@@ -63,7 +66,8 @@ pub struct RouterMsg {
 }
 
 pub enum RouterMsgData {
-	ModelRpc(ModelRpcCmd),
+	ModelRpcReq(ModelRpcReq),
+	ModelRpcRes(ModelRpcReply),
 	ModelChange(ModelChangeEvent),
 	Exec(ExecCmd),
 	ExecEvent(ExecEvent),
@@ -77,6 +81,29 @@ pub enum RouterMsgData {
 - `RouterMsgData` is intentionally a mixed envelope: it carries commands toward Core and notifications coming back from it.
 
 `RouterMsgTx`/`RouterMsgRx` alias the bounded mpsc channel, and `new_router_msg_channel()` creates the pair.
+
+## Frontend Client Handle (RouterClient)
+
+`client.rs` defines `RouterClient`, the single frontend-facing handle that encapsulates sending messages and receiving notifications.
+
+```rust
+pub struct RouterClient { ... }
+
+impl RouterClient {
+	pub fn in_proc(router_msg_tx: RouterMsgTx, model_change_rx: ModelChangeRx, exec_event_rx: ExecEventRx) -> Self;
+	pub async fn send(&self, msg: RouterMsg) -> Result<()>;
+	pub fn take_model_change_rx(&self) -> Option<ModelChangeRx>;
+	pub fn take_exec_event_rx(&self) -> Option<ExecEventRx>;
+	pub fn register_pending(&self, msg_id: MsgId, res_tx: OnceTx<ModelRpcReply>);
+	pub fn complete_pending(&self, msg_id: MsgId, reply: ModelRpcReply);
+}
+```
+
+- Frontends interact exclusively with `RouterClient`, keeping the concrete transport hidden behind its methods.
+
+- `RouterClient` owns the correlation map `msg_id -> OnceTx<ModelRpcReply>`. Future wire transports will also manage request timeout and pending map sweep on connection loss inside `RouterClient`.
+
+- In future phases, `client` and `server` cargo features in `zc-router` will isolate the client implementation from server listeners, paired with a future `transport/` framing layer and `server.rs`.
 
 ## The Router Loop
 
@@ -94,7 +121,9 @@ pub async fn run_router(
 
 - `RouterMsgData::Exec(cmd)` forwards to the executor command channel.
 
-- `RouterMsgData::ModelRpc(cmd)` forwards to the `ModelRpcCmd` channel, which the `zc-base` model RPC handler serves.
+- `RouterMsgData::ModelRpcReq(req)` converts into a local `ModelRpcCmd` with a local reply handle and forwards to the `ModelRpcCmd` channel. When the reply resolves, it completes the correlated pending response.
+
+- `RouterMsgData::ModelRpcRes(reply)` completes a matching pending reply in the client correlation map.
 
 - `RouterMsgData::ModelChange(event)` and `RouterMsgData::ExecEvent(event)` are logged at the router boundary.
 
@@ -105,6 +134,14 @@ Each route helper logs through `tracing::debug!` with the `->>` prefix and the `
 `model_rpc.rs` owns the request and reply contract:
 
 ```rust
+pub enum ModelRpcReq {
+	RunGet { id: Id },
+	RunList { options: ListRunOptions },
+	AirGet { id: Id },
+	AirList { options: ListAirOptions },
+	DbSize,
+}
+
 pub enum ModelRpcCmd {
 	RunGet { id: Id, res_tx: OnceTx<ModelRpcReply> },
 	RunList { options: ListRunOptions, res_tx: OnceTx<ModelRpcReply> },
@@ -122,13 +159,17 @@ pub enum ModelRpcReply {
 }
 ```
 
-- Each command carries a single-use `res_tx` reply handle. The router forwards the command, the `zc-base` handler performs the read and completes the handle, and the caller awaits the matching `res_rx` with no reverse channel and no correlation map.
+- `ModelRpcReq` is handle-free and serializable, crossing the router boundary inside `RouterMsgData::ModelRpcReq`.
+
+- Correlation uses `msg_id` from the outer `RouterMsg`. The client facade registers a single-use `OnceTx` handle in `RouterClient`'s pending map and awaits the corresponding `OnceRx`.
+
+- The router couples the incoming `ModelRpcReq` with a local `res_tx` handle to create `ModelRpcCmd` for `zc-base`, keeping handler execution decoupled from network boundaries.
 
 - Errors travel inside the reply variant as `ModelRpcError`, so a failed read surfaces its cause instead of only a dropped channel.
 
 The client facade hides the request/reply dance and returns plain results:
 
-- `run_get`, `run_list`, `air_get`, `air_list`, `db_size`.
+- `run_get(client, id)`, `run_list(client, options)`, `air_get(client, id)`, `air_list(client, options)`, `db_size(client)`.
 
 `ModelRpcCmdTx`/`ModelRpcCmdRx` alias the bounded mpsc channel created by `new_model_rpc_cmd_channel()`.
 
@@ -154,6 +195,6 @@ The client facade hides the request/reply dance and returns plain results:
 
 - Keeping the router free of the database and the model bus is what makes the later process split a transport swap rather than a rewrite: the same envelope, the same RPC contract, and the same client facade can move onto a wire transport.
 
-- Carrying the reply handle inside the command keeps the async request/reply shape out of the frontend, so the TUI reads persisted state as plain owned data (`Run`, `Air`) instead of a live handle.
+- Keeping handle-free serializable requests (`ModelRpcReq`) and correlating replies via `msg_id` ensures the contract is network-ready without altering the facade interface exposed to frontends.
 
-- The `res_tx` handle is a live in-process value, so this form stays behind the client facade, which is the seam where a serialization-friendly correlated reply can replace it at the wire boundary.
+- `RouterClient` unifies outbound requests and inbound notification receivers into a single object, shielding frontends from underlying transport topologies.
