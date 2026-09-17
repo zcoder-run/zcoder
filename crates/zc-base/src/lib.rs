@@ -80,7 +80,7 @@ impl ZcBaseConfig {
 /// Shared by the future server entry (`ZcBase::start`) and the temporary
 /// in-process stand-in (`InProcBase::start`) so both start the base role the
 /// same way. Must be called from within a Tokio runtime.
-fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, ExecEventRx)> {
+fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, ExecEventRx, RouterMsgRx)> {
 	// -- Core initialization
 	let (executor, exec_cmd_tx, exec_event_rx) = Executor::new(config.into_executor_config())?;
 	tokio::spawn(async move { executor.start().await });
@@ -91,13 +91,14 @@ fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, Ex
 
 	// -- Router loop
 	let (router_msg_tx, router_msg_rx) = new_router_msg_channel();
+	let (reply_tx, reply_rx) = new_router_msg_channel();
 	tokio::spawn(async move {
-		if let Err(err) = run_router(router_msg_rx, exec_cmd_tx, model_rpc_cmd_tx).await {
+		if let Err(err) = run_router(router_msg_rx, exec_cmd_tx, model_rpc_cmd_tx, reply_tx).await {
 			tracing::warn!("router loop ended with error: {err:?}");
 		}
 	});
 
-	Ok((router_msg_tx, exec_event_rx))
+	Ok((router_msg_tx, exec_event_rx, reply_rx))
 }
 
 // endregion: --- Base Core
@@ -115,6 +116,7 @@ pub struct InProcBase {
 	router_msg_tx: RouterMsgTx,
 	model_change_rx: ModelChangeRx,
 	exec_event_rx: RouterMsgRx,
+	reply_rx: RouterMsgRx,
 }
 
 impl InProcBase {
@@ -122,7 +124,7 @@ impl InProcBase {
 	///
 	/// Must be called from within a Tokio runtime.
 	pub fn start(config: ZcBaseConfig) -> crate::exec::Result<Self> {
-		let (router_msg_tx, exec_event_source_rx) = start_base_core(config)?;
+		let (router_msg_tx, exec_event_source_rx, reply_rx) = start_base_core(config)?;
 
 		// -- Core-facing pump loops
 		let (model_change_tx, model_change_rx) = new_model_change_channel();
@@ -135,12 +137,13 @@ impl InProcBase {
 			router_msg_tx,
 			model_change_rx,
 			exec_event_rx,
+			reply_rx,
 		})
 	}
 
 	/// Returns the in-process router client for a frontend.
 	pub fn router_client(self) -> RouterClient {
-		RouterClient::in_proc(self.router_msg_tx, self.model_change_rx, self.exec_event_rx)
+		RouterClient::in_proc(self.router_msg_tx, self.model_change_rx, self.exec_event_rx, self.reply_rx)
 	}
 
 	/// Returns a Core message sender for a frontend (commands and requests).
@@ -149,8 +152,8 @@ impl InProcBase {
 	}
 
 	/// Returns the Core event receivers (model change and run lifecycle) for a frontend.
-	pub fn into_event_rx(self) -> (ModelChangeRx, RouterMsgRx) {
-		(self.model_change_rx, self.exec_event_rx)
+	pub fn into_event_rx(self) -> (ModelChangeRx, RouterMsgRx, RouterMsgRx) {
+		(self.model_change_rx, self.exec_event_rx, self.reply_rx)
 	}
 }
 
@@ -170,6 +173,7 @@ impl InProcBase {
 pub struct ZcBase {
 	router_msg_tx: RouterMsgTx,
 	exec_event_rx: ExecEventRx,
+	reply_rx: RouterMsgRx,
 }
 
 impl ZcBase {
@@ -179,10 +183,11 @@ impl ZcBase {
 	/// returns the handles a frontend needs to reach Core. Must be called from
 	/// within a Tokio runtime.
 	pub fn start(config: ZcBaseConfig) -> crate::exec::Result<Self> {
-		let (router_msg_tx, exec_event_rx) = start_base_core(config)?;
+		let (router_msg_tx, exec_event_rx, reply_rx) = start_base_core(config)?;
 		Ok(Self {
 			router_msg_tx,
 			exec_event_rx,
+			reply_rx,
 		})
 	}
 
@@ -192,8 +197,8 @@ impl ZcBase {
 	}
 
 	/// Returns the Core run lifecycle event receiver for a frontend.
-	pub fn exec_event_rx(self) -> ExecEventRx {
-		self.exec_event_rx
+	pub fn exec_event_rx(self) -> (ExecEventRx, RouterMsgRx) {
+		(self.exec_event_rx, self.reply_rx)
 	}
 }
 

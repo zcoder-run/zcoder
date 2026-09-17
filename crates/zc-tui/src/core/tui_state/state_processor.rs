@@ -104,10 +104,7 @@ mod tests {
 	async fn test_state_processor_sys_metrics_when_inactive() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
-		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
-		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
-		start_router_with_stub(router_msg_rx, exec_cmd_tx);
-		let client = RouterClient::from(router_msg_tx);
+		let client = start_router_with_stub()?;
 
 		assert!(!state.show_sys_states());
 		assert_eq!(state.memory(), 0);
@@ -128,10 +125,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(None);
 		state.set_show_sys_states(true);
-		let (router_msg_tx, router_msg_rx) = new_mpsc_bounded("test_router_msg", 10)?;
-		let (exec_cmd_tx, _exec_cmd_rx) = new_mpsc_bounded("test_exec_cmd", 10)?;
-		start_router_with_stub(router_msg_rx, exec_cmd_tx);
-		let client = RouterClient::from(router_msg_tx);
+		let client = start_router_with_stub()?;
 
 		// -- Exec
 		StateProcessor::process_sys_metrics(&mut state, &client).await;

@@ -3,7 +3,7 @@ use crate::exec::ExecCmd;
 use crate::exec_event::ExecEvent;
 use crate::model_change::ModelChangeEvent;
 use crate::model_rpc::{ModelRpcCmdTx, ModelRpcReply, ModelRpcReq};
-use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx};
+use crate::msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx};
 use zc_common::MsgId;
 use zc_core::exec::ExecCmdTx;
 use zc_core::model::Id;
@@ -15,9 +15,10 @@ pub async fn run_router(
 	mut router_rx: RouterMsgRx,
 	exec_cmd_tx: ExecCmdTx,
 	model_rpc_cmd_tx: ModelRpcCmdTx,
+	reply_tx: RouterMsgTx,
 ) -> Result<()> {
 	while let Ok(msg) = router_rx.recv().await {
-		route(&exec_cmd_tx, &model_rpc_cmd_tx, msg).await?;
+		route(&exec_cmd_tx, &model_rpc_cmd_tx, &reply_tx, msg).await?;
 	}
 
 	Ok(())
@@ -28,7 +29,12 @@ pub async fn run_router(
 // region:    --- Router
 
 /// Dispatches a [`RouterMsg`] to the appropriate Core subsystem.
-pub async fn route(exec_cmd_tx: &ExecCmdTx, model_rpc_cmd_tx: &ModelRpcCmdTx, msg: RouterMsg) -> Result<()> {
+pub async fn route(
+	exec_cmd_tx: &ExecCmdTx,
+	model_rpc_cmd_tx: &ModelRpcCmdTx,
+	reply_tx: &RouterMsgTx,
+	msg: RouterMsg,
+) -> Result<()> {
 	let msg_id = msg.msg_id;
 	let wks_id = msg.wks_id;
 
@@ -37,10 +43,10 @@ pub async fn route(exec_cmd_tx: &ExecCmdTx, model_rpc_cmd_tx: &ModelRpcCmdTx, ms
 			route_exec(exec_cmd_tx, msg_id, wks_id, cmd).await?;
 		}
 		RouterMsgData::ModelRpcReq(req) => {
-			route_model_rpc_req(model_rpc_cmd_tx, msg_id, wks_id, req).await?;
+			route_model_rpc_req(model_rpc_cmd_tx, reply_tx, msg_id, wks_id, req).await?;
 		}
 		RouterMsgData::ModelRpcRes(reply) => {
-			route_model_rpc_res(msg_id, wks_id, reply).await?;
+			route_model_rpc_res(reply_tx, msg_id, wks_id, reply).await?;
 		}
 		RouterMsgData::ModelChange(event) => {
 			route_model_change(msg_id, wks_id, event).await?;
@@ -75,6 +81,7 @@ async fn route_exec_event(msg_id: MsgId, wks_id: Id, event: ExecEvent) -> Result
 
 async fn route_model_rpc_req(
 	model_rpc_cmd_tx: &ModelRpcCmdTx,
+	reply_tx: &RouterMsgTx,
 	msg_id: MsgId,
 	wks_id: Id,
 	req: ModelRpcReq,
@@ -83,24 +90,38 @@ async fn route_model_rpc_req(
 	let (res_tx, res_rx) = zc_common::event_base::new_once("model_rpc_local");
 	let cmd = req.into_cmd(res_tx);
 	model_rpc_cmd_tx.send(cmd).await?;
+	let reply_tx = reply_tx.clone();
 
 	tokio::spawn(async move {
 		if let Ok(reply) = res_rx.recv().await {
-			let _res_msg = RouterMsg {
+			let res_msg = RouterMsg {
 				msg_id,
 				wks_id,
-				data: RouterMsgData::ModelRpcRes(reply.clone()),
+				data: RouterMsgData::ModelRpcRes(reply),
 			};
-			crate::model_rpc::complete_pending(msg_id, reply);
+			if reply_tx.send(res_msg).await.is_err() {
+				tracing::warn!("->> failed to route model RPC reply msg_id={msg_id:?}");
+			}
 		}
 	});
 
 	Ok(())
 }
 
-async fn route_model_rpc_res(msg_id: MsgId, wks_id: Id, reply: ModelRpcReply) -> Result<()> {
+async fn route_model_rpc_res(
+	reply_tx: &RouterMsgTx,
+	msg_id: MsgId,
+	wks_id: Id,
+	reply: ModelRpcReply,
+) -> Result<()> {
 	tracing::debug!("->> route_model_rpc_res msg_id={msg_id:?} wks_id={wks_id:?} reply={reply:?}");
-	crate::model_rpc::complete_pending(msg_id, reply);
+	reply_tx
+		.send(RouterMsg {
+			msg_id,
+			wks_id,
+			data: RouterMsgData::ModelRpcRes(reply),
+		})
+		.await?;
 	Ok(())
 }
 

@@ -2,8 +2,6 @@ use crate::client::RouterClient;
 use crate::msg::{RouterMsg, RouterMsgData};
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex};
 use zc_common::MsgId;
 use zc_common::event_base::{OnceRx, OnceTx, new_once};
 use zc_core::model::{Air, Id, ListAirOptions, ListRunOptions, Run};
@@ -120,27 +118,6 @@ pub fn new_model_rpc_cmd_channel() -> (ModelRpcCmdTx, ModelRpcCmdRx) {
 }
 
 // endregion: --- Model RPC Command Channel
-
-// region:    --- Pending Correlation Map
-
-pub(crate) type PendingReplyMap = HashMap<MsgId, OnceTx<ModelRpcReply>>;
-
-static IN_PROC_PENDING_MAP: LazyLock<Arc<Mutex<PendingReplyMap>>> =
-	LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
-
-pub(crate) fn in_proc_pending_map() -> Arc<Mutex<PendingReplyMap>> {
-	Arc::clone(&IN_PROC_PENDING_MAP)
-}
-
-pub(crate) fn complete_pending(msg_id: MsgId, reply: ModelRpcReply) {
-	if let Ok(mut map) = IN_PROC_PENDING_MAP.lock()
-		&& let Some(res_tx) = map.remove(&msg_id)
-	{
-		res_tx.send(reply);
-	}
-}
-
-// endregion: --- Pending Correlation Map
 
 // region:    --- Client Facade
 
@@ -276,6 +253,17 @@ mod list_options_serde {
 
 // region:    --- Support
 
+struct PendingRequest<'a> {
+	client: &'a RouterClient,
+	msg_id: MsgId,
+}
+
+impl Drop for PendingRequest<'_> {
+	fn drop(&mut self) {
+		self.client.remove_pending(self.msg_id);
+	}
+}
+
 /// Sends a model RPC request and awaits its correlated reply.
 async fn request(
 	client: &RouterClient,
@@ -285,10 +273,10 @@ async fn request(
 ) -> ModelRpcResult<ModelRpcReply> {
 	let msg = RouterMsg::new(RouterMsgData::ModelRpcReq(req));
 	let msg_id = msg.msg_id;
-	client.register_pending(msg_id, res_tx);
+	client.register_pending(msg_id, res_tx)?;
+	let _pending = PendingRequest { client, msg_id };
 
 	if let Err(err) = client.send(msg).await {
-		client.remove_pending(msg_id);
 		return Err(ModelRpcError::custom(err.to_string()));
 	}
 	res_rx.recv().await.map_err(|err| ModelRpcError::custom(err.to_string()))
