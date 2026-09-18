@@ -52,14 +52,25 @@ pub use wks_resolver::BaseWksResolver;
 
 - `Config` is a cheap, cloneable handle over `Arc<ConfigInner>` with builder style `with_*` and `append_*` helpers.
 
-- `ConfigManager` loads `.zcoder/config.toml`, supports `refresh_if_modified()` hot reload, and exposes `get_config()`.
+- `ConfigManager` loads the base configuration layers from the base directory, supports `refresh_if_modified()` hot reload for the base-only paths, and exposes `get_config()`.
+
+- `Config::layer_toml_strs_layers(&[&str])` merges any number of TOML layers in order using `zc_common::jsons::merge`, where later layers override earlier ones.
+
+- `ConfigManager::from_zbase_dir(zbase_dir)` layers `<zbase_dir>/config-default.toml` first and `<zbase_dir>/config-user.toml` on top.
+  - The base files are materialized by `zc_asset::update_zbase_assets` before the manager is built.
 
 - The default config defines `[workspace] working_dir`, `[maestro] model`, `[model_sizes]`, and `[model_aliases]`.
 
-- For workspace-specific operations, `ConfigManager::resolve_for_wks` loads `<wks_dir>/.zcoder/config.toml` and layers it over the base configuration using `zc_common::jsons::merge`.
+- The effective configuration has three tiers, from highest to lowest precedence:
+  - `<wks_dir>/.zcoder/config.toml` (workspace config)
+  - `<zbase_dir>/config-user.toml` (user base config)
+  - `<zbase_dir>/config-default.toml` (default base config)
+
+- For workspace-specific operations, `ConfigManager::resolve_for_wks` resolves the workspace directory from `wks_id` through `WksBmc` and delegates to `resolve_for_wks_dir`.
   - Object fields merge recursively.
   - Scalar and array values replace wholesale.
-  - Resolved configurations are cached per `wks_id` and invalidated if modification timestamps change.
+  - Layers whose files are absent are skipped.
+  - The resolution is recomputed fresh from disk on every call, with no mtime-based cache, so on-disk edits apply to the next run.
 
 - `get_model(ref_name)` resolves size presets such as `$small`, alias chains, and reasoning suffixes such as `-low`, `-high`, and `-max`, with cycle detection.
 
@@ -87,11 +98,11 @@ pub use wks_resolver::BaseWksResolver;
 
 - `exec/` owns `Executor`, `ExecutorConfig`, the provider call helper `exec_air_chat`, the `prep_air_*` helpers, and the exec error.
 
-- `Executor::new(config)` creates the command and event channels, syncs workspace assets, loads config, builds the AIPROG registry and script engine, composes the system prompt, and builds the base `ChatRequest`.
+- `Executor::new(config)` creates the command and event channels, syncs the workspace assets with `update_wks_dir` and the base assets with `update_zbase_assets`, builds the config manager with `ConfigManager::from_zbase_dir`, builds the AIPROG registry and script engine, composes the system prompt, and builds the base `ChatRequest`.
 
 - `Executor::start()` consumes `ExecCmd` values until the command channel closes.
 
-- `ExecutorConfig` carries `wks_dir`, an optional `base_dir`, and an optional explicit `model`.
+- `ExecutorConfig` carries `wks_dir`, an optional `base_dir`, an optional `zbase_dir` (defaulting to `zc_common::dirs::zbase_dir()`), and an optional explicit `model`.
 
 - The executor imports the contract types (`ExecCmd`, `ExecEvent`, and the channel aliases) from `zc_core::exec` and the model layer from `crate::model`.
 
@@ -113,7 +124,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 2. `handle_run_prompt` creates a `Run` row and emits `ExecEvent::RunStart(run_id)`.
 
-3. Workspace assets are re-synced and the config is hot reloaded before each run.
+3. Workspace assets are re-synced, and the effective three-tier configuration is recomputed fresh from disk for that run, so on-disk edits apply immediately.
 
 4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from the workspace's canonical directory `wks.dir` via `wks_id`.
 

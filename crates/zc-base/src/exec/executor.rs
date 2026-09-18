@@ -30,6 +30,7 @@ struct ExecutorInner {
 pub struct ExecutorConfig {
 	wks_dir: SPath,
 	base_dir: Option<SPath>,
+	zbase_dir: Option<SPath>,
 	model: Option<String>,
 }
 
@@ -39,6 +40,7 @@ impl Default for ExecutorConfig {
 		Self {
 			wks_dir,
 			base_dir: None,
+			zbase_dir: None,
 			model: None,
 		}
 	}
@@ -55,6 +57,13 @@ impl ExecutorConfig {
 		self
 	}
 
+	/// Overrides the `zc base` directory used to resolve the base config layers
+	/// (`config-default.toml` and `config-user.toml`).
+	pub fn with_zbase_dir(mut self, zbase_dir: impl Into<SPath>) -> Self {
+		self.zbase_dir = Some(zbase_dir.into());
+		self
+	}
+
 	pub fn with_model(mut self, model: impl Into<String>) -> Self {
 		self.model = Some(model.into());
 		self
@@ -66,10 +75,14 @@ impl Executor {
 		let (action_tx, action_rx) = new_mpsc_bounded::<ExecReq>("executor_channel", 1000)?;
 		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
 
-		// -- Sync project assets and load config
-		zc_asset::update_zcoder_project(&config.wks_dir)?;
-		let config_path = config.wks_dir.join(".zcoder").join("config.toml");
-		let config_manager = ConfigManager::from_file(config_path)?;
+		// -- Sync workspace and base assets, then load the base config layers
+		zc_asset::update_wks_dir(&config.wks_dir)?;
+		let zbase_dir = match &config.zbase_dir {
+			Some(zbase_dir) => zbase_dir.clone(),
+			None => zc_common::dirs::zbase_dir()?,
+		};
+		zc_asset::update_zbase_assets(&zbase_dir)?;
+		let config_manager = ConfigManager::from_zbase_dir(zbase_dir)?;
 
 		let aip_registry = aiprog::AipRegistry::from_aip_modules()?;
 		let script_engine = aiprog::ScriptEngine::builder().with_registry(aip_registry).build()?;
@@ -139,7 +152,7 @@ impl ExecutorInner {
 				self.wks_dir.clone()
 			}
 		};
-		let _ = zc_asset::update_zcoder_project(&req_wks_dir);
+		let _ = zc_asset::update_wks_dir(&req_wks_dir);
 
 		let active_config = self.config_manager.resolve_for_wks(mm, Some(wks_id)).await.unwrap_or_else(|e| {
 			tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
@@ -451,7 +464,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_exec_new_initializes_project_config() -> Result<()> {
+	fn test_exec_new_initializes_base_config() -> Result<()> {
 		// -- Setup & Fixtures
 		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
 		let temp_dir = std::env::temp_dir().join(format!("zc_exec_test_{nanos}"));
@@ -461,7 +474,8 @@ mod tests {
 		// -- Exec
 		let config = ExecutorConfig::default()
 			.with_wks_dir(temp_spath.clone())
-			.with_base_dir(temp_spath.join("demo"));
+			.with_base_dir(temp_spath.join("demo"))
+			.with_zbase_dir(temp_spath.join("zbase"));
 		let (executor, _tx, _rx) = Executor::new(config)?;
 
 		// -- Check
@@ -482,11 +496,14 @@ mod tests {
 		let temp_dir = std::env::temp_dir().join(format!("zc_exec_recovery_test_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
+		let zbase_dir = temp_spath.join("zbase");
 
-		let config = ExecutorConfig::default().with_wks_dir(temp_spath.clone());
+		let config = ExecutorConfig::default()
+			.with_wks_dir(temp_spath.clone())
+			.with_zbase_dir(zbase_dir.clone());
 		let (executor, _tx, _rx) = Executor::new(config)?;
 
-		let config_path = temp_spath.join(".zcoder").join("config.toml");
+		let config_path = zbase_dir.join("config-user.toml");
 		assert!(config_path.exists());
 
 		// Modify config
@@ -508,8 +525,8 @@ big = "custom-model"
 		let _ = std::fs::remove_file(&config_path);
 		assert!(!config_path.exists());
 
-		// Simulate project update and refresh as done in handle_run_prompt
-		let _ = zc_asset::update_zcoder_project(&executor.inner.wks_dir);
+		// Simulate base asset sync and refresh as done at base startup and per run
+		let _ = zc_asset::update_zbase_assets(&zbase_dir);
 		let reloaded = executor.inner.config_manager.refresh_if_modified()?;
 		assert!(reloaded);
 		assert!(config_path.exists());

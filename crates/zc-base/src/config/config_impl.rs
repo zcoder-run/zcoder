@@ -82,6 +82,11 @@ impl Config {
 		Ok(Self(Arc::new(inner)))
 	}
 
+	pub fn layer_toml_strs_layers(layers: &[&str]) -> Result<Self> {
+		let inner = ConfigInner::layer_toml_strs_layers(layers)?;
+		Ok(Self(Arc::new(inner)))
+	}
+
 	pub fn with_maestro_model(mut self, model: impl Into<String>) -> Self {
 		Arc::make_mut(&mut self.0).maestro_model = Some(model.into());
 		self
@@ -164,15 +169,18 @@ impl ConfigInner {
 	}
 
 	pub fn layer_toml_strs(base_toml: &str, overlay_toml: &str) -> Result<Self> {
-		let base_toml_val: toml::Value = toml::from_str(base_toml)?;
-		let base_json: serde_json::Value =
-			serde_json::to_value(base_toml_val).map_err(|e| Error::custom(e.to_string()))?;
+		Self::layer_toml_strs_layers(&[base_toml, overlay_toml])
+	}
 
-		let overlay_toml_val: toml::Value = toml::from_str(overlay_toml)?;
-		let overlay_json: serde_json::Value =
-			serde_json::to_value(overlay_toml_val).map_err(|e| Error::custom(e.to_string()))?;
-
-		let merged_json = zc_common::jsons::merge(base_json, overlay_json);
+	/// Layers multiple TOML strings in order, where later layers override earlier ones.
+	pub fn layer_toml_strs_layers(layers: &[&str]) -> Result<Self> {
+		let mut merged_json = serde_json::Value::Object(serde_json::Map::new());
+		for layer in layers {
+			let layer_toml_val: toml::Value = toml::from_str(layer)?;
+			let layer_json: serde_json::Value =
+				serde_json::to_value(layer_toml_val).map_err(|e| Error::custom(e.to_string()))?;
+			merged_json = zc_common::jsons::merge(merged_json, layer_json);
+		}
 		let inner: ConfigInner = serde_json::from_value(merged_json).map_err(|e| Error::custom(e.to_string()))?;
 		Ok(inner)
 	}
@@ -455,6 +463,45 @@ lite = "override-lite-model"
 		assert_eq!(config.wks_dir().map(|p| p.as_str()), Some("crates/zc-core"));
 		assert_eq!(config.get_model("lite")?, "override-lite-model");
 		assert_eq!(config.get_model("extra")?, "base-extra");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_layer_toml_strs_layers_three_tiers() -> Result<()> {
+		// -- Setup & Fixtures
+		let default_toml = r#"
+[maestro]
+model = "$small"
+
+[model_sizes]
+small = "lite"
+
+[model_aliases]
+lite = "gemini-3.5-flash-lite"
+flash = "gemini-3.7-flash"
+"#;
+		let user_toml = r#"
+[model_sizes]
+small = "flash"
+
+[model_aliases]
+flash = "user-flash"
+"#;
+		let wks_toml = r#"
+[model_aliases]
+flash = "wks-flash"
+extra = "wks-extra"
+"#;
+
+		// -- Exec
+		let config = Config::layer_toml_strs_layers(&[default_toml, user_toml, wks_toml])?;
+
+		// -- Check
+		assert_eq!(config.get_model("$small")?, "wks-flash");
+		assert_eq!(config.get_model("extra")?, "wks-extra");
+		assert_eq!(config.get_model("lite")?, "gemini-3.5-flash-lite");
+		assert_eq!(config.get_model("$small-high")?, "wks-flash-high");
 
 		Ok(())
 	}

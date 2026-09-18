@@ -1,8 +1,7 @@
-use crate::config::{Config, ConfigInner, DEFAULT_CONFIG_TOML, Error, Result};
+use crate::config::{Config, ConfigInner, DEFAULT_CONFIG_TOML, Result};
 use crate::model::{Id, ModelManager, WksBmc};
 use arc_swap::ArcSwap;
 use simple_fs::SPath;
-use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -11,17 +10,15 @@ use std::time::SystemTime;
 
 pub struct ConfigManager {
 	config_path: SPath,
+	default_config_path: Option<SPath>,
 	current: ArcSwap<ConfigInner>,
-	last_mtime: Mutex<Option<SystemTime>>,
-	wks_configs: Mutex<HashMap<Id, CachedWksConfig>>,
+	last_mtimes: Mutex<BaseMtimes>,
 }
 
-struct CachedWksConfig {
-	#[allow(dead_code)]
-	wks_config_path: SPath,
-	last_wks_mtime: Option<SystemTime>,
-	last_base_mtime: Option<SystemTime>,
-	config: Config,
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct BaseMtimes {
+	default_config_mtime: Option<SystemTime>,
+	config_mtime: Option<SystemTime>,
 }
 
 // endregion: --- Types
@@ -32,28 +29,25 @@ impl ConfigManager {
 	pub fn from_file(config_path: impl Into<SPath>) -> Result<Self> {
 		let config_path = config_path.into();
 
-		let (inner, mtime) = if config_path.exists() {
-			let metadata = fs::metadata(&config_path)?;
-			let mtime = metadata.modified().ok();
-			let content = fs::read_to_string(&config_path)?;
-			let inner = ConfigInner::from_toml_str(&content)?;
-			(inner, mtime)
-		} else {
+		if !config_path.exists() {
 			if let Some(parent) = config_path.parent() {
 				let _ = simple_fs::ensure_dir(parent);
 			}
 			let _ = fs::write(&config_path, DEFAULT_CONFIG_TOML);
-			let inner = ConfigInner::from_toml_str(DEFAULT_CONFIG_TOML)?;
-			let mtime = fs::metadata(&config_path).ok().and_then(|m| m.modified().ok());
-			(inner, mtime)
-		};
+		}
 
-		Ok(Self {
-			config_path,
-			current: ArcSwap::from_pointee(inner),
-			last_mtime: Mutex::new(mtime),
-			wks_configs: Mutex::new(HashMap::new()),
-		})
+		Self::build(config_path, None)
+	}
+
+	/// Creates a manager backed by the base directory configuration layers.
+	///
+	/// The layers are `config-default.toml` followed by `config-user.toml`.
+	pub fn from_zbase_dir(zbase_dir: impl Into<SPath>) -> Result<Self> {
+		let zbase_dir = zbase_dir.into();
+		let config_path = zbase_dir.join(BASE_USER_FILE_NAME);
+		let default_config_path = zbase_dir.join(BASE_DEFAULT_FILE_NAME);
+
+		Self::build(config_path, Some(default_config_path))
 	}
 
 	pub fn get_config(&self) -> Config {
@@ -85,57 +79,12 @@ impl ConfigManager {
 		self.resolve_for_wks_dir(wks_id, &wks_dir)
 	}
 
+	/// Resolves the effective configuration for a workspace directory, layering
+	/// the base configs and the workspace config fresh from disk on every call.
 	pub fn resolve_for_wks_dir(&self, wks_id: Id, wks_dir: &SPath) -> Result<Config> {
-		self.refresh_if_modified()?;
-
-		let base_mtime = *self.last_mtime.lock().map_err(|_| Error::custom("lock poisoned"))?;
+		tracing::debug!("->> resolving fresh config for wks_id {wks_id}");
 		let wks_config_path = wks_dir.join(".zcoder").join("config.toml");
-
-		let wks_mtime = if wks_config_path.exists() {
-			fs::metadata(&wks_config_path).ok().and_then(|m| m.modified().ok())
-		} else {
-			None
-		};
-
-		// Check cache
-		{
-			let wks_cache = self.wks_configs.lock().map_err(|_| Error::custom("lock poisoned"))?;
-			if let Some(cached) = wks_cache.get(&wks_id)
-				&& cached.last_base_mtime == base_mtime
-				&& cached.last_wks_mtime == wks_mtime
-			{
-				return Ok(cached.config.clone());
-			}
-		}
-
-		// Compute layered config
-		let layered_config = if wks_config_path.exists() {
-			let base_toml = if self.config_path.exists() {
-				fs::read_to_string(&self.config_path)?
-			} else {
-				DEFAULT_CONFIG_TOML.to_string()
-			};
-			let wks_toml = fs::read_to_string(&wks_config_path)?;
-			Config::layer_toml_strs(&base_toml, &wks_toml)?
-		} else {
-			self.get_config()
-		};
-
-		// Update cache
-		{
-			let mut wks_cache = self.wks_configs.lock().map_err(|_| Error::custom("lock poisoned"))?;
-			wks_cache.insert(
-				wks_id,
-				CachedWksConfig {
-					wks_config_path,
-					last_wks_mtime: wks_mtime,
-					last_base_mtime: base_mtime,
-					config: layered_config.clone(),
-				},
-			);
-		}
-
-		Ok(layered_config)
+		self.layer_wks_config(&wks_config_path)
 	}
 
 	pub fn refresh_if_modified(&self) -> Result<bool> {
@@ -144,37 +93,37 @@ impl ConfigManager {
 				let _ = simple_fs::ensure_dir(parent);
 			}
 			let _ = fs::write(&self.config_path, DEFAULT_CONFIG_TOML);
-			let new_inner = ConfigInner::from_toml_str(DEFAULT_CONFIG_TOML)?;
-			let current_mtime = fs::metadata(&self.config_path).ok().and_then(|m| m.modified().ok());
+			let layers = base_layer_strs(&self.config_path, self.default_config_path.as_ref())?;
+			let new_inner = layer_strs_to_inner(&layers)?;
+			let current_mtimes = read_base_mtimes(&self.config_path, self.default_config_path.as_ref());
 
-			let mut last_mtime_guard = self
-				.last_mtime
+			let mut last_mtimes_guard = self
+				.last_mtimes
 				.lock()
 				.map_err(|_| crate::config::Error::custom("ConfigManager lock poisoned"))?;
 
 			self.current.store(Arc::new(new_inner));
-			*last_mtime_guard = current_mtime;
+			*last_mtimes_guard = current_mtimes;
 
 			return Ok(true);
 		}
 
-		let metadata = fs::metadata(&self.config_path)?;
-		let current_mtime = metadata.modified().ok();
+		let current_mtimes = read_base_mtimes(&self.config_path, self.default_config_path.as_ref());
 
-		let mut last_mtime_guard = self
-			.last_mtime
+		let mut last_mtimes_guard = self
+			.last_mtimes
 			.lock()
 			.map_err(|_| crate::config::Error::custom("ConfigManager lock poisoned"))?;
 
-		if current_mtime.is_some() && current_mtime == *last_mtime_guard {
+		if current_mtimes.config_mtime.is_some() && current_mtimes == *last_mtimes_guard {
 			return Ok(false);
 		}
 
-		let content = fs::read_to_string(&self.config_path)?;
-		let new_inner = ConfigInner::from_toml_str(&content)?;
+		let layers = base_layer_strs(&self.config_path, self.default_config_path.as_ref())?;
+		let new_inner = layer_strs_to_inner(&layers)?;
 
 		self.current.store(Arc::new(new_inner));
-		*last_mtime_guard = current_mtime;
+		*last_mtimes_guard = current_mtimes;
 
 		Ok(true)
 	}
@@ -185,6 +134,73 @@ impl ConfigManager {
 }
 
 // endregion: --- ConfigManager
+
+// region:    --- Support
+
+impl ConfigManager {
+	fn build(config_path: SPath, default_config_path: Option<SPath>) -> Result<Self> {
+		let layers = base_layer_strs(&config_path, default_config_path.as_ref())?;
+		let inner = layer_strs_to_inner(&layers)?;
+		let mtimes = read_base_mtimes(&config_path, default_config_path.as_ref());
+
+		Ok(Self {
+			config_path,
+			default_config_path,
+			current: ArcSwap::from_pointee(inner),
+			last_mtimes: Mutex::new(mtimes),
+		})
+	}
+
+	fn layer_wks_config(&self, wks_config_path: &SPath) -> Result<Config> {
+		let mut layers = base_layer_strs(&self.config_path, self.default_config_path.as_ref())?;
+		if wks_config_path.exists() {
+			layers.push(fs::read_to_string(wks_config_path)?);
+		}
+		layer_strs_to_config(&layers)
+	}
+}
+
+fn base_layer_strs(config_path: &SPath, default_config_path: Option<&SPath>) -> Result<Vec<String>> {
+	let mut layers: Vec<String> = Vec::new();
+
+	if let Some(default_config_path) = default_config_path
+		&& default_config_path.exists()
+	{
+		layers.push(fs::read_to_string(default_config_path)?);
+	}
+	if config_path.exists() {
+		layers.push(fs::read_to_string(config_path)?);
+	}
+	if layers.is_empty() {
+		layers.push(DEFAULT_CONFIG_TOML.to_string());
+	}
+
+	Ok(layers)
+}
+
+fn layer_strs_to_config(layers: &[String]) -> Result<Config> {
+	let inner = layer_strs_to_inner(layers)?;
+	Ok(Config::from(inner))
+}
+
+fn layer_strs_to_inner(layers: &[String]) -> Result<ConfigInner> {
+	let layer_refs: Vec<&str> = layers.iter().map(|layer| layer.as_str()).collect();
+	ConfigInner::layer_toml_strs_layers(&layer_refs)
+}
+
+fn read_base_mtimes(config_path: &SPath, default_config_path: Option<&SPath>) -> BaseMtimes {
+	BaseMtimes {
+		default_config_mtime: default_config_path
+			.and_then(|path| fs::metadata(path).ok())
+			.and_then(|metadata| metadata.modified().ok()),
+		config_mtime: fs::metadata(config_path).ok().and_then(|metadata| metadata.modified().ok()),
+	}
+}
+
+const BASE_DEFAULT_FILE_NAME: &str = "config-default.toml";
+const BASE_USER_FILE_NAME: &str = "config-user.toml";
+
+// endregion: --- Support
 
 // region:    --- Tests
 
@@ -339,6 +355,111 @@ my_alias = "wks-override-target"
 
 		let _ = fs::remove_file(&tmp_base_path);
 		let _ = fs::remove_dir_all(&tmp_wks_dir);
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_manager_from_zbase_dir_layers() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+		let tmp_root = SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_zbase_layers_{nanos}"));
+		let zbase_dir = tmp_root.join("zbase");
+		fs::create_dir_all(&zbase_dir)?;
+
+		let default_toml = r#"
+[maestro]
+model = "$small"
+
+[model_sizes]
+small = "lite"
+
+[model_aliases]
+lite = "gemini-3.5-flash-lite"
+flash = "default-flash"
+"#;
+		fs::write(zbase_dir.join("config-default.toml"), default_toml)?;
+
+		let user_toml = r#"
+[model_aliases]
+flash = "user-flash"
+"#;
+		fs::write(zbase_dir.join("config-user.toml"), user_toml)?;
+
+		// -- Exec
+		let manager = ConfigManager::from_zbase_dir(&zbase_dir)?;
+
+		// -- Check base layers
+		let base_config = manager.get_config();
+		assert_eq!(base_config.get_model("lite")?, "gemini-3.5-flash-lite");
+		assert_eq!(base_config.get_model("flash")?, "user-flash");
+		assert_eq!(base_config.get_model("$small")?, "gemini-3.5-flash-lite");
+
+		// -- Exec & Check workspace layer on top of base layers
+		let wks_dir = tmp_root.join("wks");
+		let zcoder_dir = wks_dir.join(".zcoder");
+		fs::create_dir_all(&zcoder_dir)?;
+		let wks_toml = r#"
+[model_aliases]
+flash = "wks-flash"
+"#;
+		fs::write(zcoder_dir.join("config.toml"), wks_toml)?;
+
+		let wks_config = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+
+		// -- Check
+		assert_eq!(wks_config.get_model("flash")?, "wks-flash");
+		assert_eq!(wks_config.get_model("lite")?, "gemini-3.5-flash-lite");
+		assert_eq!(wks_config.get_model("$small-high")?, "gemini-3.5-flash-lite-high");
+
+		// -- Cleanup
+		let _ = fs::remove_dir_all(&tmp_root);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_manager_resolve_for_wks_dir_fresh_picks_up_edits() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+		let tmp_root = SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_fresh_pickup_{nanos}"));
+		let zbase_dir = tmp_root.join("zbase");
+		fs::create_dir_all(&zbase_dir)?;
+
+		let default_toml = r#"
+[model_aliases]
+flash = "default-flash"
+"#;
+		fs::write(zbase_dir.join("config-default.toml"), default_toml)?;
+		fs::write(zbase_dir.join("config-user.toml"), "")?;
+
+		let manager = ConfigManager::from_zbase_dir(&zbase_dir)?;
+
+		let wks_dir = tmp_root.join("wks");
+		let zcoder_dir = wks_dir.join(".zcoder");
+		fs::create_dir_all(&zcoder_dir)?;
+		let wks_toml = r#"
+[model_aliases]
+flash = "wks-flash"
+"#;
+		fs::write(zcoder_dir.join("config.toml"), wks_toml)?;
+
+		// -- Exec & Check the workspace layer wins
+		let config_first = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+		assert_eq!(config_first.get_model("flash")?, "wks-flash");
+
+		// -- Edit the user layer on disk without any refresh call and resolve again
+		fs::write(zbase_dir.join("config-user.toml"), "[model_aliases]\nflash = \"user-flash\"\n")?;
+		let config_second = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+		assert_eq!(config_second.get_model("flash")?, "wks-flash");
+
+		// -- Remove the workspace layer so the fresh user layer wins
+		fs::remove_file(zcoder_dir.join("config.toml"))?;
+		let config_third = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+		assert_eq!(config_third.get_model("flash")?, "user-flash");
+
+		// -- Cleanup
+		let _ = fs::remove_dir_all(&tmp_root);
+
 		Ok(())
 	}
 }
