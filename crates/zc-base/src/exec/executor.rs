@@ -75,8 +75,7 @@ impl Executor {
 		let (action_tx, action_rx) = new_mpsc_bounded::<ExecReq>("executor_channel", 1000)?;
 		let (status_tx, status_rx) = new_mpsc_bounded::<ExecEvent>("executor_channel", 1000)?;
 
-		// -- Sync workspace and base assets, then load the base config layers
-		zc_asset::update_wks_dir(&config.wks_dir)?;
+		// -- Sync base assets, then load the base config layers
 		let zbase_dir = match &config.zbase_dir {
 			Some(zbase_dir) => zbase_dir.clone(),
 			None => zc_common::dirs::zbase_dir()?,
@@ -146,13 +145,16 @@ impl ExecutorInner {
 
 		// -- Resolve workspace directory and config dynamically
 		let req_wks_dir = match crate::model::WksBmc::get(mm, wks_id).await {
-			Ok(wks) => SPath::from(wks.dir),
+			Ok(wks) => {
+				let wks_dir = SPath::from(wks.dir);
+				let _ = zc_asset::update_wks_dir(&wks_dir);
+				wks_dir
+			}
 			Err(_) => {
 				tracing::warn!("->> unknown wks_id '{wks_id}', falling back to default wks_dir");
 				self.wks_dir.clone()
 			}
 		};
-		let _ = zc_asset::update_wks_dir(&req_wks_dir);
 
 		let active_config = self.config_manager.resolve_for_wks(mm, Some(wks_id)).await.unwrap_or_else(|e| {
 			tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
@@ -535,6 +537,34 @@ big = "custom-model"
 		let restored_config = executor.inner.config_manager.get_config();
 		assert_eq!(restored_config.maestro_model(), "$small");
 		assert_eq!(restored_config.get_model("$small")?, "gemini-3.5-flash-lite");
+
+		// -- Clean
+		let _ = std::fs::remove_dir_all(&temp_dir);
+		Ok(())
+	}
+
+	#[test]
+	fn test_exec_new_does_not_create_wks_dir_under_zbase() -> Result<()> {
+		// -- Setup & Fixtures
+		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+		let temp_dir = std::env::temp_dir().join(format!("zc_exec_no_wks_under_zbase_{nanos}"));
+		std::fs::create_dir_all(&temp_dir)?;
+		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
+		let zbase_dir = temp_spath.join("zbase");
+
+		// -- Exec
+		let config = ExecutorConfig::default()
+			.with_wks_dir(zbase_dir.clone())
+			.with_zbase_dir(zbase_dir.clone());
+		let (_executor, _tx, _rx) = Executor::new(config)?;
+
+		// -- Check
+		assert!(
+			!zbase_dir.join(".zcoder").exists(),
+			".zcoder must not be created under zbase_dir"
+		);
+		assert!(zbase_dir.join("config-default.toml").exists());
+		assert!(zbase_dir.join("config-user.toml").exists());
 
 		// -- Clean
 		let _ = std::fs::remove_dir_all(&temp_dir);

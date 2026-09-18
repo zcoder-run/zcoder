@@ -22,7 +22,7 @@ pub async fn run_base_cmd() -> Result<()> {
 	}
 	unlink_if_exists(&sock_path)?;
 
-	let base_config = ZcBaseConfig::default().with_wks_dir(&zbase_dir);
+	let base_config = ZcBaseConfig::default();
 	let BaseParts {
 		exec_cmd_tx,
 		model_rpc_cmd_tx,
