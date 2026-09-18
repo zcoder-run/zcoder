@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 	// -- Cmd parsing & Setup
 	let cli_cmd = CliCmd::parse();
 
-	if let Some(SubCmd::Base) = cli_cmd.command {
+	if cli_cmd.base || matches!(cli_cmd.command, Some(SubCmd::Base)) {
 		return base_cmd::run_base_cmd().await;
 	}
 
