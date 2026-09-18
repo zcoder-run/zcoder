@@ -46,26 +46,3 @@ fn test_applier_basic() -> Result<()> {
     Ok(())
 }
 ```
-
-## Workspace and Workbench Terminology & Naming
-
-Distinguish between user-facing surfaces and internal code identifiers for workspace and workbench concepts.
-
-### User-Facing Surfaces
-
-- Use full natural words (`workspace`, `workbench`, `worktree`) in user documentation, CLI help output, and user error messages.
-- In configuration files (such as `config.toml`), use `[workspace]` as the section table name.
-
-### Internal Code Identifiers
-
-- Use short PascalCase prefixes for Rust types:
-  - `Wks` (for workspace components)
-  - `WBench` (for workbench context and items)
-  - `WTree` (for worktree structures)
-  - `WksConfig` (for workspace configuration struct)
-- Use short snake_case prefixes for variables, struct fields, and function parameters:
-  - `wks_dir: SPath` (instead of `workspace_dir` or `project_dir`)
-  - `wbench_dir: SPath`
-  - `wtree_dir: SPath`
-  - `wspace: &WSpace`
-- Method and builder names follow the same short convention, for example `with_wks_dir(...)` and `wspace.wbench(...)`.
