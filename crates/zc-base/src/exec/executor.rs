@@ -141,14 +141,10 @@ impl ExecutorInner {
 		};
 		let _ = zc_asset::update_zcoder_project(&req_wks_dir);
 
-		let active_config = self
-			.config_manager
-			.resolve_for_wks(mm, Some(wks_id))
-			.await
-			.unwrap_or_else(|e| {
-				tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
-				self.config_manager.get_config()
-			});
+		let active_config = self.config_manager.resolve_for_wks(mm, Some(wks_id)).await.unwrap_or_else(|e| {
+			tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
+			self.config_manager.get_config()
+		});
 
 		let model_ref = self.model.as_deref().unwrap_or(active_config.maestro_model());
 		let resolved_model = active_config.get_model(model_ref)?;
@@ -180,7 +176,8 @@ impl ExecutorInner {
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
 			// -- Execute Air Request
-			let (res, _air_id) = exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, Some(wks_id), None).await?;
+			let (res, _air_id) =
+				exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, Some(wks_id), None).await?;
 
 			if let Some(raw_body) = res.captured_raw_body.as_ref() {
 				let content = raw_body.x_pretty().unwrap_or_else(|e| e.to_string());

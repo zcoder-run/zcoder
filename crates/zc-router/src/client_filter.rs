@@ -42,7 +42,7 @@ mod tests {
 	fn test_client_filter_matching_id_passes() -> Result<()> {
 		// -- Setup & Fixtures
 		let client_wks_id = Id::try_from("00000000-0000-0000-0000-000000000001".to_string())?;
-		let msg = make_msg(client_wks_id.clone());
+		let msg = make_msg(client_wks_id);
 
 		// -- Exec
 		let pass = client_filter(client_wks_id, &msg);

@@ -125,7 +125,7 @@ mod tests {
 
 		// -- AttachOk
 		let assigned = Id::try_from("00000000-0000-0000-0000-000000000007".to_string())?;
-		let attach_ok = RouterMsg::new(RouterMsgData::AttachOk(assigned.clone()));
+		let attach_ok = RouterMsg::new(RouterMsgData::AttachOk(assigned));
 		let json = serde_json::to_string(&attach_ok)?;
 		let back: RouterMsg = serde_json::from_str(&json)?;
 		match back.data {

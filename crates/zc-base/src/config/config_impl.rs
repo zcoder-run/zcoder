@@ -173,8 +173,7 @@ impl ConfigInner {
 			serde_json::to_value(overlay_toml_val).map_err(|e| Error::custom(e.to_string()))?;
 
 		let merged_json = zc_common::jsons::merge(base_json, overlay_json);
-		let inner: ConfigInner =
-			serde_json::from_value(merged_json).map_err(|e| Error::custom(e.to_string()))?;
+		let inner: ConfigInner = serde_json::from_value(merged_json).map_err(|e| Error::custom(e.to_string()))?;
 		Ok(inner)
 	}
 
@@ -193,11 +192,11 @@ impl ConfigInner {
 		if over.maestro_model.is_some() {
 			self.maestro_model = over.maestro_model;
 		}
-		if let Some(over_wks) = over.wks {
-			if let Some(over_dir) = over_wks.wks_dir {
-				let wks = self.wks.get_or_insert_with(Default::default);
-				wks.wks_dir = Some(over_dir);
-			}
+		if let Some(over_wks) = over.wks
+			&& let Some(over_dir) = over_wks.wks_dir
+		{
+			let wks = self.wks.get_or_insert_with(Default::default);
+			wks.wks_dir = Some(over_dir);
 		}
 		if let Some(over_sizes) = over.model_sizes {
 			let sizes = self.model_sizes.get_or_insert_with(BTreeMap::new);

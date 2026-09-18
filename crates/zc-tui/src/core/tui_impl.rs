@@ -8,10 +8,7 @@ use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
 use zc_router::RouterClient;
 
-pub async fn start_tui(
-	client: RouterClient,
-	initial_prompt: Option<String>,
-) -> Result<()> {
+pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
 	let mut terminal = ratatui::init();
 	execute!(stdout(), EnableMouseCapture)?;

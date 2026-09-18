@@ -1,5 +1,3 @@
-// region:    --- Modules
-
 #[cfg(feature = "client")]
 use crate::client_info::ClientInfo;
 #[cfg(feature = "client")]
@@ -20,8 +18,6 @@ use tokio::net::UnixStream;
 use zc_common::MsgId;
 use zc_common::event_base::OnceTx;
 use zc_core::model::Id;
-
-// endregion: --- Modules
 
 // region:    --- Types
 
@@ -157,11 +153,7 @@ impl RouterClient {
 			}
 		}
 		if let Some(inner) = inner.upgrade() {
-			let pending = inner
-				.pending_replies
-				.lock()
-				.unwrap_or_else(|err| err.into_inner())
-				.take();
+			let pending = inner.pending_replies.lock().unwrap_or_else(|err| err.into_inner()).take();
 			drop(pending);
 		}
 	}
@@ -191,7 +183,7 @@ impl RouterClient {
 
 	/// Returns the workspace id assigned to this client, if any.
 	pub fn wks_id(&self) -> Option<Id> {
-		self.inner.wks_id.lock().unwrap_or_else(|err| err.into_inner()).clone()
+		*self.inner.wks_id.lock().unwrap_or_else(|err| err.into_inner())
 	}
 
 	/// Takes the model change receiver if it has not been taken yet.
@@ -275,11 +267,7 @@ impl ClientConnSink for UdsSink {
 
 	fn on_closed(&self) {
 		if let Some(inner) = self.inner.upgrade() {
-			let pending = inner
-				.pending_replies
-				.lock()
-				.unwrap_or_else(|err| err.into_inner())
-				.take();
+			let pending = inner.pending_replies.lock().unwrap_or_else(|err| err.into_inner()).take();
 			drop(pending);
 		}
 	}
@@ -378,7 +366,16 @@ mod tests {
 			})
 			.await?;
 		assert!(matches!(rx_a.recv().await?, ModelRpcReply::DbSize(Ok(10))));
-		assert!(client_b.inner.pending_replies.lock().unwrap().as_ref().unwrap().contains_key(&msg_id));
+		assert!(
+			client_b
+				.inner
+				.pending_replies
+				.lock()
+				.unwrap()
+				.as_ref()
+				.unwrap()
+				.contains_key(&msg_id)
+		);
 
 		reply_tx_b
 			.send(RouterMsg {
@@ -402,7 +399,10 @@ mod tests {
 		let request_client = client.clone();
 		let request = tokio::spawn(async move { crate::model_rpc::db_size(&request_client).await });
 		let msg = router_rx.recv().await?;
-		assert!(matches!(msg.data, RouterMsgData::ModelRpcReq(crate::model_rpc::ModelRpcReq::DbSize)));
+		assert!(matches!(
+			msg.data,
+			RouterMsgData::ModelRpcReq(crate::model_rpc::ModelRpcReq::DbSize)
+		));
 		reply_tx
 			.send(RouterMsg {
 				msg_id: msg.msg_id,
@@ -521,7 +521,7 @@ mod tests {
 		async fn test_router_client_uds_attach_and_rpc() -> Result<()> {
 			let assigned_id = Id::try_from("00000000-0000-0000-0000-000000000077".to_string())?;
 			let resolver = Arc::new(StubResolver {
-				id: assigned_id.clone(),
+				id: assigned_id,
 				fail: false,
 			});
 			let (socket_path, _watch, mut rpc_rx, _model_tx) =
@@ -565,7 +565,7 @@ mod tests {
 			);
 			let event = RouterMsg {
 				msg_id: MsgId::new(50),
-				wks_id: wks_a.clone(),
+				wks_id: wks_a,
 				data: RouterMsgData::ModelChange(model_event),
 			};
 			model_tx.send(event).await?;
@@ -591,7 +591,10 @@ mod tests {
 			let res = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-err")).await;
 			assert!(res.is_err());
 			let err_msg = res.unwrap_err().to_string();
-			assert!(err_msg.contains("stub resolver failure"), "expected resolver message, got: {err_msg}");
+			assert!(
+				err_msg.contains("stub resolver failure"),
+				"expected resolver message, got: {err_msg}"
+			);
 
 			watch.wait_for_zero().await;
 			assert_eq!(watch.count(), 0);
@@ -603,7 +606,7 @@ mod tests {
 		async fn test_router_client_uds_send_stamps_wks_id() -> Result<()> {
 			let assigned_id = Id::try_from("00000000-0000-0000-0000-000000000088".to_string())?;
 			let resolver = Arc::new(StubResolver {
-				id: assigned_id.clone(),
+				id: assigned_id,
 				fail: false,
 			});
 			let (socket_path, _watch, _rpc_rx, _model_tx) =
@@ -633,7 +636,10 @@ mod tests {
 				EntityType::Run,
 				EntityAction::Created,
 				Some(Id::default()),
-				RelIds { run_id: None, wks_id: Some(wks_a) },
+				RelIds {
+					run_id: None,
+					wks_id: Some(wks_a),
+				},
 			);
 			let msg = RouterMsg {
 				msg_id: MsgId::new(99),

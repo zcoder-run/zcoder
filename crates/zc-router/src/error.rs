@@ -20,10 +20,7 @@ pub enum Error {
 
 	/// A frame whose payload length exceeds the accepted maximum.
 	#[from(ignore)]
-	FrameTooLarge {
-		len: usize,
-		max: u32,
-	},
+	FrameTooLarge { len: usize, max: u32 },
 }
 
 // region:    --- Custom

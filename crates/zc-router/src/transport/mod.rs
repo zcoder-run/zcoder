@@ -9,11 +9,11 @@ mod wire;
 #[allow(dead_code)]
 mod client_conn;
 
-#[allow(unused_imports)]
-pub(crate) use wire::MAX_FRAME_LEN;
-pub(crate) use wire::{WireReader, WireWriter};
 #[cfg(feature = "client")]
 pub(crate) use client_conn::{ClientConn, ClientConnSink};
 pub use socket_path::{is_live, socket_path, unlink_if_exists};
+#[allow(unused_imports)]
+pub(crate) use wire::MAX_FRAME_LEN;
+pub(crate) use wire::{WireReader, WireWriter};
 
 // endregion: --- Modules

@@ -100,10 +100,11 @@ impl ConfigManager {
 		// Check cache
 		{
 			let wks_cache = self.wks_configs.lock().map_err(|_| Error::custom("lock poisoned"))?;
-			if let Some(cached) = wks_cache.get(&wks_id) {
-				if cached.last_base_mtime == base_mtime && cached.last_wks_mtime == wks_mtime {
-					return Ok(cached.config.clone());
-				}
+			if let Some(cached) = wks_cache.get(&wks_id)
+				&& cached.last_base_mtime == base_mtime
+				&& cached.last_wks_mtime == wks_mtime
+			{
+				return Ok(cached.config.clone());
 			}
 		}
 
@@ -291,8 +292,8 @@ sol = "gpt-5.6-sol"
 	async fn test_config_manager_resolve_for_wks() -> Result<()> {
 		let mm = crate::model::get_model_manager()?;
 
-		let tmp_base_path = SPath::from_std_path_buf(std::env::temp_dir())?
-			.join(format!("zc_test_base_{}.toml", uuid::Uuid::new_v4()));
+		let tmp_base_path =
+			SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_base_{}.toml", uuid::Uuid::new_v4()));
 		let base_toml = r#"
 [maestro]
 model = "$small"
@@ -312,8 +313,8 @@ my_alias = "base-target"
 		assert_eq!(base_resolved.get_model("my_alias")?, "base-target");
 
 		// 2. Workspace config overrides model alias
-		let tmp_wks_dir = SPath::from_std_path_buf(std::env::temp_dir())?
-			.join(format!("zc_test_wks_{}", uuid::Uuid::new_v4()));
+		let tmp_wks_dir =
+			SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_wks_{}", uuid::Uuid::new_v4()));
 		let wks_dot_dir = tmp_wks_dir.join(".zcoder");
 		simple_fs::ensure_dir(&wks_dot_dir)?;
 		let wks_toml = r#"

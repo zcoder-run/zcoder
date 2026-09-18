@@ -110,11 +110,7 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 	}
 }
 
-pub async fn handle_app_action(
-	state: &mut TuiState,
-	client: &RouterClient,
-	action: AppActionEvent,
-) -> Result<bool> {
+pub async fn handle_app_action(state: &mut TuiState, client: &RouterClient, action: AppActionEvent) -> Result<bool> {
 	match action {
 		AppActionEvent::Quit => Ok(true),
 		AppActionEvent::RunPrompt(prompt) => {
@@ -407,7 +403,10 @@ mod tests {
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Created,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id), wks_id: None },
+			zc_core::model::RelIds {
+				run_id: Some(run_id),
+				wks_id: None,
+			},
 		));
 		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 
@@ -441,7 +440,10 @@ mod tests {
 			zc_core::model::EntityType::Aixc,
 			zc_core::model::EntityAction::Updated,
 			Some(air_id),
-			zc_core::model::RelIds { run_id: Some(run_id), wks_id: None },
+			zc_core::model::RelIds {
+				run_id: Some(run_id),
+				wks_id: None,
+			},
 		));
 		handle_tui_event(&mut state, &tui_tx, &client, model_event).await?;
 

@@ -3,8 +3,8 @@ use simple_fs::SPath;
 use zc_base::{BaseParts, ZcBaseConfig, start_base_parts};
 use zc_common::consts::{BASE_IDLE_GRACE_SECS, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME};
 use zc_common::dirs::zbase_dir;
-use zc_router::{ConnWatch, RouterServer};
 use zc_router::transport::{is_live, socket_path, unlink_if_exists};
+use zc_router::{ConnWatch, RouterServer};
 
 pub async fn run_base_cmd() -> Result<()> {
 	let zbase_dir = zbase_dir()?;
@@ -14,7 +14,10 @@ pub async fn run_base_cmd() -> Result<()> {
 
 	let sock_path = socket_path();
 	if is_live(&sock_path).await {
-		eprintln!("Error: a live zcoder base server is already running on {}", sock_path.as_str());
+		eprintln!(
+			"Error: a live zcoder base server is already running on {}",
+			sock_path.as_str()
+		);
 		std::process::exit(1);
 	}
 	unlink_if_exists(&sock_path)?;

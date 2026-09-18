@@ -118,12 +118,7 @@ async fn route_model_rpc_req(
 	Ok(())
 }
 
-async fn route_model_rpc_res(
-	reply_tx: &RouterMsgTx,
-	msg_id: MsgId,
-	wks_id: Id,
-	reply: ModelRpcReply,
-) -> Result<()> {
+async fn route_model_rpc_res(reply_tx: &RouterMsgTx, msg_id: MsgId, wks_id: Id, reply: ModelRpcReply) -> Result<()> {
 	tracing::debug!("->> route_model_rpc_res msg_id={msg_id:?} wks_id={wks_id:?} reply={reply:?}");
 	reply_tx
 		.send(RouterMsg {

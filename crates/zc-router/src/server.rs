@@ -391,7 +391,10 @@ mod tests {
 	async fn test_server_attach_ok() -> Result<()> {
 		// -- Setup & Fixtures
 		let wks_id = test_wks_id("1")?;
-		let resolver: Arc<dyn WksResolver> = Arc::new(StubResolver { id: wks_id, fail: false });
+		let resolver: Arc<dyn WksResolver> = Arc::new(StubResolver {
+			id: wks_id,
+			fail: false,
+		});
 		let (socket_path, _watch) = start_test_server("zc-router-test-attach-ok.sock", resolver).await?;
 		let stream = UnixStream::connect(&socket_path).await?;
 		let (read_half, write_half) = stream.into_split();

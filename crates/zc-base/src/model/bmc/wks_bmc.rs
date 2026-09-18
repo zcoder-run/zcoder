@@ -40,11 +40,7 @@ impl WksBmc {
 	///
 	/// The directory is normalized to an absolute path first, so two clients
 	/// spelling the same workspace differently resolve to one row.
-	pub async fn get_or_create_by_dir(
-		mm: &ModelManager,
-		dir: impl Into<String>,
-		label: Option<String>,
-	) -> Result<Id> {
+	pub async fn get_or_create_by_dir(mm: &ModelManager, dir: impl Into<String>, label: Option<String>) -> Result<Id> {
 		let dir = normalize_dir(dir.into())?;
 
 		// -- Fast path: the directory is already known

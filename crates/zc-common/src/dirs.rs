@@ -2,9 +2,7 @@
 
 // region:    --- Modules
 
-use crate::consts::{
-	CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME,
-};
+use crate::consts::{CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME};
 use crate::{Error, Result};
 use simple_fs::SPath;
 

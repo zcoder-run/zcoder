@@ -150,6 +150,7 @@ mod tests {
 
 	// region:    --- Support
 
+	#[allow(clippy::large_enum_variant)]
 	enum SinkEvent {
 		Reply(MsgId, ModelRpcReply),
 		ModelChange(MsgId),
