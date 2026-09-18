@@ -1,0 +1,16 @@
+[workspace]
+working_dir = "./"   # When relative, relative to cwd of the project_dir
+
+[maestro]
+
+# model     = "$small"
+
+[model_sizes]
+# Addressed with `$` (model = "$small")
+# small     = "lite"
+# medium    = "flash"
+# big       = "sol"
+
+[model_aliases]
+# -- my custom aliases
+# lite          = "gemini-3.5-flash-lite"

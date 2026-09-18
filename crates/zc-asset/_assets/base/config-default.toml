@@ -1,0 +1,38 @@
+# DO NOT EDIT - WILL BE UPDATED ON RESTART
+# EDIT config-user.toml for customization/override
+
+[workspace]
+working_dir = "./"   # When relative, relative to cwd of the project_dir
+
+[maestro]
+
+model     = "$small"
+
+[model_sizes]
+# Addressed with `$` (model = "$small")
+small     = "lite"
+medium    = "flash"
+big       = "sol"
+
+[model_aliases]
+# -- google
+lite31        = "gemini-3.1-flash-lite"
+lite          = "gemini-3.5-flash-lite"
+flash         = "gemini-3.7-flash"
+# -- Openai
+luna          = "gpt-5.6-luna"
+terra         = "gpt-5.6-terra"
+sol           = "gpt-5.6-sol"
+# -- Anthropic
+opus          = "claude-opus-5"
+claude        = "claude-sonnet-5"
+sonnet        = "claude-sonnet-5"
+haiku         = "claude-haiku-4-5"
+# -- kimi
+kimi          = "kimi::kimi-k3"
+kimi-fast     = "kimi::kimi-k2.7-code-highspeed"
+# -- Qwen
+qwen          = "qwen_cloud::qwen3.8-max"
+# -- DeepSeek
+dflash        = "deepseek-v4-flash"
+dpro          = "deepseek-v4-pro"
