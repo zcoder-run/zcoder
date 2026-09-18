@@ -8,35 +8,6 @@ use std::sync::Arc;
 const MAX_ALIAS_DEPTH: usize = 16;
 const REASONING_SUFFIXES: [&str; 7] = ["-zero", "-none", "-low", "-medium", "-high", "-xhigh", "-max"];
 
-pub const DEFAULT_CONFIG_TOML: &str = r#"[workspace]
-working_dir = "./"   # When relative, relative to cwd of the project_dir
-
-[maestro]
-
-model     = "$small"
-
-[model_sizes]
-# Addressed with `$` (model = "$small")
-small     = "lite"
-medium    = "flash"
-big       = "sol"
-
-[model_aliases]
-# -- google
-lite31        = "gemini-3.1-flash-lite"
-lite          = "gemini-3.5-flash-lite"
-flash         = "gemini-3.7-flash"
-# -- Openai
-luna          = "gpt-5.6-luna"
-terra         = "gpt-5.6-terra"
-sol           = "gpt-5.6-sol"
-# -- Anthropic
-opus          = "claude-opus-5"
-claude        = "claude-sonnet-5"
-sonnet        = "claude-sonnet-5"
-haiku         = "claude-haiku-4-5"
-"#;
-
 // region:    --- Types
 
 #[derive(Debug, Clone, Default)]
@@ -395,7 +366,7 @@ big     = "sol"
 [model_aliases]
 lite31  = "gemini-3.1-flash-lite"
 lite    = "gemini-3.5-flash-lite"
-flash   = "gemini-3.7-flash"
+flash   = "gemini-3.8-flash"
 sol     = "gpt-5.6-sol"
 chain_a = "chain_b"
 chain_b = "chain_c"
@@ -479,7 +450,7 @@ small = "lite"
 
 [model_aliases]
 lite = "gemini-3.5-flash-lite"
-flash = "gemini-3.7-flash"
+flash = "gemini-3.8-flash"
 "#;
 		let user_toml = r#"
 [model_sizes]
@@ -573,7 +544,7 @@ medium = "flash"
 		let model = config.get_model("flash")?;
 
 		// -- Check
-		assert_eq!(model, "gemini-3.7-flash");
+		assert_eq!(model, "gemini-3.8-flash");
 
 		Ok(())
 	}

@@ -1,9 +1,9 @@
-use crate::config::{Config, ConfigInner, DEFAULT_CONFIG_TOML, Result};
+use crate::config::{Config, ConfigInner, Error, Result};
 use crate::model::{Id, ModelManager, WksBmc};
 use arc_swap::ArcSwap;
 use simple_fs::SPath;
 use std::fs;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 // region:    --- Types
@@ -33,7 +33,7 @@ impl ConfigManager {
 			if let Some(parent) = config_path.parent() {
 				let _ = simple_fs::ensure_dir(parent);
 			}
-			let _ = fs::write(&config_path, DEFAULT_CONFIG_TOML);
+			let _ = fs::write(&config_path, embedded_default_config_toml()?);
 		}
 
 		Self::build(config_path, None)
@@ -92,7 +92,7 @@ impl ConfigManager {
 			if let Some(parent) = self.config_path.parent() {
 				let _ = simple_fs::ensure_dir(parent);
 			}
-			let _ = fs::write(&self.config_path, DEFAULT_CONFIG_TOML);
+			let _ = fs::write(&self.config_path, embedded_default_config_toml()?);
 			let layers = base_layer_strs(&self.config_path, self.default_config_path.as_ref())?;
 			let new_inner = layer_strs_to_inner(&layers)?;
 			let current_mtimes = read_base_mtimes(&self.config_path, self.default_config_path.as_ref());
@@ -172,7 +172,7 @@ fn base_layer_strs(config_path: &SPath, default_config_path: Option<&SPath>) -> 
 		layers.push(fs::read_to_string(config_path)?);
 	}
 	if layers.is_empty() {
-		layers.push(DEFAULT_CONFIG_TOML.to_string());
+		layers.push(embedded_default_config_toml()?.to_string());
 	}
 
 	Ok(layers)
@@ -197,8 +197,22 @@ fn read_base_mtimes(config_path: &SPath, default_config_path: Option<&SPath>) ->
 	}
 }
 
+/// Returns the embedded default base configuration content, cached after the first read.
+fn embedded_default_config_toml() -> Result<&'static str> {
+	static DEFAULT_CONFIG_TOML: OnceLock<String> = OnceLock::new();
+
+	if let Some(content) = DEFAULT_CONFIG_TOML.get() {
+		return Ok(content.as_str());
+	}
+
+	let content = zc_asset::extract_asset_str(DEFAULT_CONFIG_ASSET).map_err(Error::custom_from_err)?;
+	let content = DEFAULT_CONFIG_TOML.get_or_init(|| content);
+	Ok(content.as_str())
+}
+
 const BASE_DEFAULT_FILE_NAME: &str = "config-default.toml";
 const BASE_USER_FILE_NAME: &str = "config-user.toml";
+const DEFAULT_CONFIG_ASSET: &str = "base/config-default.toml";
 
 // endregion: --- Support
 
@@ -459,6 +473,26 @@ flash = "wks-flash"
 
 		// -- Cleanup
 		let _ = fs::remove_dir_all(&tmp_root);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_config_manager_from_file_uses_embedded_asset() -> Result<()> {
+		// -- Setup & Fixtures
+		let tmp_path = SPath::from_std_path_buf(std::env::temp_dir())?
+			.join(format!("zc_test_embedded_default_{}.toml", uuid::Uuid::new_v4()));
+
+		// -- Exec
+		ConfigManager::from_file(&tmp_path)?;
+
+		// -- Check
+		let written = fs::read_to_string(&tmp_path)?;
+		let embedded = zc_asset::extract_asset_str("base/config-default.toml")?;
+		assert_eq!(written, embedded);
+
+		// -- Clean
+		let _ = fs::remove_file(&tmp_path);
 
 		Ok(())
 	}
