@@ -145,7 +145,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 The `zc base` command runs the base as a machine-wide standalone daemon process:
 
-- **Directory and Logging**: Runs out of `zbase_dir()` (`~/.config/zcoder-base/`) and logs exclusively to `zbase_log_file()` (`~/.config/zcoder-base/debug-log/log.txt`).
+- **Directory and Logging**: Runs out of `zbase_dir()`, which defaults to `~/.config/zcoder-base/` and honors `ZCODER_BASE_DIR`. A relative override is resolved from the launching `zc` command's current directory. It logs exclusively to `zbase_log_file()` under that directory.
 - **Socket Ownership**: Binds exclusively to `/tmp/zcoder-base.sock`. If another live server responds, it aborts startup. Stale sockets from crashed servers are automatically unlinked.
 - **Idle Shutdown**: Uses `ConnWatch` from `RouterServer`. When connected client count drops to 0, an idle timer starts (`BASE_IDLE_GRACE_SECS` = 5s). If no client connects before expiration, the server shuts down cleanly. New connections cancel the shutdown.
 - **Signal Handling**: Captures `SIGINT` and `SIGTERM` to ensure `/tmp/zcoder-base.sock` is unlinked on termination.

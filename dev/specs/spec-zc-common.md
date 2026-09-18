@@ -45,9 +45,11 @@ pub mod yaml;
 - `time`: time helpers such as `now_micro()`
 - `cache`: file cache helpers such as `save_file_cache(name, content)`
 - `yaml`: content conversion helpers such as `json_to_yaml_string`
+- `consts` and `dirs`: shared path constants and directory resolution helpers
 
 ## Design Considerations
 
 - A narrow `zc-common` avoids creating a large shared dependency that every crate must accept, which reduces coupling and keeps ownership decisions explicit.
 - `zc-common::Error` is local to shared common behavior and is not a workspace-wide error.
 - `zc-common` must not depend on `zc-core`, `zc-router`, `zc-base`, `zc-tui`, `zc-asset`, or the root binary.
+- `dirs::zbase_dir()` uses `ZCODER_BASE_DIR` when it is set. Absolute values are used as given, while relative values are resolved from the current working directory of the `zc` command. Without the variable, it returns `$HOME/.config/zcoder-base`.

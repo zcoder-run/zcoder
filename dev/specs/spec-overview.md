@@ -137,8 +137,8 @@ The root binary (`zcoder`, bin `zc`) acts as both the client entry point and the
    - Starts the TUI (`zc_tui::start_tui`).
 
 2. **Base Subcommand (`zc base`)**:
-   - Runs out of `zbase_dir` (`~/.config/zcoder-base/`).
-   - Sets up debug logging in `~/.config/zcoder-base/debug-log/log.txt`.
+   - Runs out of `zbase_dir`, defaulting to `~/.config/zcoder-base/`. `ZCODER_BASE_DIR` overrides this location, with relative values resolved from the command's current directory.
+   - Sets up debug logging in `<zbase_dir>/debug-log/log.txt`.
    - Connect-probes socket to ensure single-instance exclusivity.
    - Binds `RouterServer` on `/tmp/zcoder-base.sock`.
    - Monitors active connections and shuts down after `BASE_IDLE_GRACE_SECS` when connection count reaches zero.
@@ -221,6 +221,7 @@ All path names, directory markers, socket paths, and timeouts are centralized in
 - `WKS_MARKER_DIR_NAME`: `.zcoder`
 - `BASE_IDLE_GRACE_SECS`: `5`
 - Path helpers live in `zc_common::dirs`.
+- `ZCODER_BASE_DIR` optionally overrides `zbase_dir`. It may be absolute or relative to the current working directory of the `zc` command.
 
 ## Event Contracts
 

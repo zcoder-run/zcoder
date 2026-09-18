@@ -2,18 +2,35 @@
 
 // region:    --- Modules
 
-use crate::consts::{CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME};
+use crate::consts::{
+	CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME,
+	ZCODER_BASE_DIR_ENV,
+};
 use crate::{Error, Result};
 use simple_fs::SPath;
+use std::path::Path;
 
 // endregion: --- Modules
 
 // region:    --- Paths
 
-/// Returns the `zc base` home directory, `$HOME/.config/zcoder-base`.
+/// Returns the `zc base` home directory, using `ZCODER_BASE_DIR` when set.
 pub fn zbase_dir() -> Result<SPath> {
-	let home = home_dir().ok_or_else(|| Error::custom("HOME environment variable is not set"))?;
-	Ok(zbase_dir_from_home(&home))
+	match std::env::var(ZCODER_BASE_DIR_ENV) {
+		Ok(value) => {
+			let cwd = std::env::current_dir()
+				.map_err(|err| Error::custom(format!("failed to resolve the current directory: {err}")))?;
+			let cwd = SPath::from(cwd.to_string_lossy().as_ref());
+			Ok(zbase_dir_from_value(&value, &cwd))
+		}
+		Err(std::env::VarError::NotPresent) => {
+			let home = home_dir().ok_or_else(|| Error::custom("HOME environment variable is not set"))?;
+			Ok(zbase_dir_from_home(&home))
+		}
+		Err(std::env::VarError::NotUnicode(_)) => {
+			Err(Error::custom(format!("{ZCODER_BASE_DIR_ENV} environment variable is not valid Unicode")))
+		}
+	}
 }
 
 /// Returns the `zc base` log file, `$HOME/.config/zcoder-base/debug-log/log.txt`.
@@ -51,6 +68,14 @@ fn home_dir() -> Option<SPath> {
 
 fn zbase_dir_from_home(home: &SPath) -> SPath {
 	home.join(CONFIG_DIR_NAME).join(ZBASE_DIR_NAME)
+}
+
+fn zbase_dir_from_value(value: &str, cwd: &SPath) -> SPath {
+	if Path::new(value).is_absolute() {
+		SPath::from(value)
+	} else {
+		cwd.join(value)
+	}
 }
 
 // endregion: --- Support
@@ -152,6 +177,34 @@ mod tests {
 
 		// -- Check
 		assert_eq!(zbase_dir.as_str(), "/home/dev/.config/zcoder-base");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_dirs_zbase_dir_from_value_relative() -> Result<()> {
+		// -- Setup & Fixtures
+		let cwd = SPath::from("/home/dev/project");
+
+		// -- Exec
+		let zbase_dir = zbase_dir_from_value(".zcoder-base", &cwd);
+
+		// -- Check
+		assert_eq!(zbase_dir.as_str(), "/home/dev/project/.zcoder-base");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_dirs_zbase_dir_from_value_absolute() -> Result<()> {
+		// -- Setup & Fixtures
+		let cwd = SPath::from("/home/dev/project");
+
+		// -- Exec
+		let zbase_dir = zbase_dir_from_value("/tmp/zcoder-base", &cwd);
+
+		// -- Check
+		assert_eq!(zbase_dir.as_str(), "/tmp/zcoder-base");
 
 		Ok(())
 	}
