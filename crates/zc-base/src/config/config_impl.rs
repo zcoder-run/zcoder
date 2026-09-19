@@ -26,7 +26,7 @@ impl Deref for Config {
 pub struct ConfigInner {
 	pub maestro_model: Option<String>,
 
-	pub wks: Option<WksConfig>,
+	pub wspace: Option<WspaceConfig>,
 
 	pub model_sizes: Option<BTreeMap<String, String>>,
 
@@ -34,8 +34,8 @@ pub struct ConfigInner {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct WksConfig {
-	pub wks_dir: Option<SPath>,
+pub struct WspaceConfig {
+	pub wspace_dir: Option<SPath>,
 }
 
 // endregion: --- Types
@@ -63,14 +63,14 @@ impl Config {
 		self
 	}
 
-	pub fn with_wks_dir(mut self, dir: impl Into<SPath>) -> Self {
-		let wks = Arc::make_mut(&mut self.0).wks.get_or_insert_with(Default::default);
-		wks.wks_dir = Some(dir.into());
+	pub fn with_wspace_dir(mut self, dir: impl Into<SPath>) -> Self {
+		let wspace = Arc::make_mut(&mut self.0).wspace.get_or_insert_with(Default::default);
+		wspace.wspace_dir = Some(dir.into());
 		self
 	}
 
 	pub fn with_workspace_working_dir(self, dir: impl Into<SPath>) -> Self {
-		self.with_wks_dir(dir)
+		self.with_wspace_dir(dir)
 	}
 
 	pub fn with_model_aliases(mut self, aliases: BTreeMap<String, String>) -> Self {
@@ -103,12 +103,12 @@ impl Config {
 		self.0.maestro_model()
 	}
 
-	pub fn wks_dir(&self) -> Option<&SPath> {
-		self.0.wks_dir()
+	pub fn wspace_dir(&self) -> Option<&SPath> {
+		self.0.wspace_dir()
 	}
 
 	pub fn workspace_working_dir(&self) -> Option<&SPath> {
-		self.0.wks_dir()
+		self.0.wspace_dir()
 	}
 
 	pub fn model_sizes(&self) -> Option<&BTreeMap<String, String>> {
@@ -163,19 +163,19 @@ impl ConfigInner {
 		}
 	}
 
-	pub fn wks_dir(&self) -> Option<&SPath> {
-		self.wks.as_ref().and_then(|w| w.wks_dir.as_ref())
+	pub fn wspace_dir(&self) -> Option<&SPath> {
+		self.wspace.as_ref().and_then(|w| w.wspace_dir.as_ref())
 	}
 
 	pub fn merge_with(&mut self, over: ConfigInner) {
 		if over.maestro_model.is_some() {
 			self.maestro_model = over.maestro_model;
 		}
-		if let Some(over_wks) = over.wks
-			&& let Some(over_dir) = over_wks.wks_dir
+		if let Some(over_wspace) = over.wspace
+			&& let Some(over_dir) = over_wspace.wspace_dir
 		{
-			let wks = self.wks.get_or_insert_with(Default::default);
-			wks.wks_dir = Some(over_dir);
+			let wspace = self.wspace.get_or_insert_with(Default::default);
+			wspace.wspace_dir = Some(over_dir);
 		}
 		if let Some(over_sizes) = over.model_sizes {
 			let sizes = self.model_sizes.get_or_insert_with(BTreeMap::new);
@@ -267,13 +267,13 @@ impl From<ConfigInner> for Config {
 
 impl From<ConfigToml> for ConfigInner {
 	fn from(toml: ConfigToml) -> Self {
-		let wks = toml.wks.map(|w| WksConfig {
-			wks_dir: w.wks_dir.map(SPath::from),
+		let wspace = toml.wspace.map(|w| WspaceConfig {
+			wspace_dir: w.wspace_dir.map(SPath::from),
 		});
 		let maestro_model = toml.maestro.and_then(|m| m.model);
 		Self {
 			maestro_model,
-			wks,
+			wspace,
 			model_sizes: toml.model_sizes,
 			model_aliases: toml.model_aliases,
 		}
@@ -282,12 +282,12 @@ impl From<ConfigToml> for ConfigInner {
 
 impl From<ConfigInner> for ConfigToml {
 	fn from(inner: ConfigInner) -> Self {
-		let wks = inner.wks.map(|w| WksConfigToml {
-			wks_dir: w.wks_dir.map(|p| p.as_str().to_string()),
+		let wspace = inner.wspace.map(|w| WspaceConfigToml {
+			wspace_dir: w.wspace_dir.map(|p| p.as_str().to_string()),
 		});
 		let maestro = inner.maestro_model.map(|m| MaestroToml { model: Some(m) });
 		Self {
-			wks,
+			wspace,
 			maestro,
 			model_sizes: inner.model_sizes,
 			model_aliases: inner.model_aliases,
@@ -319,7 +319,7 @@ fn peel_reasoning_suffixes(mut model: &str) -> (&str, Vec<&str>) {
 struct ConfigToml {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	#[serde(rename = "workspace")]
-	wks: Option<WksConfigToml>,
+	wspace: Option<WspaceConfigToml>,
 
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	maestro: Option<MaestroToml>,
@@ -332,10 +332,10 @@ struct ConfigToml {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct WksConfigToml {
+struct WspaceConfigToml {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	#[serde(rename = "working_dir")]
-	wks_dir: Option<String>,
+	wspace_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -401,7 +401,7 @@ loop_b  = "loop_a"
 		// -- Check
 		assert_eq!(config.maestro_model(), "custom-model");
 		assert_eq!(config.workspace_working_dir().map(|p| p.as_str()), Some("./sub-crate"));
-		assert_eq!(config.wks_dir().map(|p| p.as_str()), Some("./sub-crate"));
+		assert_eq!(config.wspace_dir().map(|p| p.as_str()), Some("./sub-crate"));
 		let resolved = config.get_model("$small")?;
 		assert_eq!(resolved, "gpt-4o-mini");
 
@@ -431,7 +431,7 @@ lite = "override-lite-model"
 		let config = Config::layer_toml_strs(base, overlay)?;
 
 		// -- Check
-		assert_eq!(config.wks_dir().map(|p| p.as_str()), Some("crates/zc-core"));
+		assert_eq!(config.wspace_dir().map(|p| p.as_str()), Some("crates/zc-core"));
 		assert_eq!(config.get_model("lite")?, "override-lite-model");
 		assert_eq!(config.get_model("extra")?, "base-extra");
 
@@ -459,20 +459,20 @@ small = "flash"
 [model_aliases]
 flash = "user-flash"
 "#;
-		let wks_toml = r#"
+		let wspace_toml = r#"
 [model_aliases]
-flash = "wks-flash"
-extra = "wks-extra"
+flash = "wspace-flash"
+extra = "wspace-extra"
 "#;
 
 		// -- Exec
-		let config = Config::layer_toml_strs_layers(&[default_toml, user_toml, wks_toml])?;
+		let config = Config::layer_toml_strs_layers(&[default_toml, user_toml, wspace_toml])?;
 
 		// -- Check
-		assert_eq!(config.get_model("$small")?, "wks-flash");
-		assert_eq!(config.get_model("extra")?, "wks-extra");
+		assert_eq!(config.get_model("$small")?, "wspace-flash");
+		assert_eq!(config.get_model("extra")?, "wspace-extra");
 		assert_eq!(config.get_model("lite")?, "gemini-3.5-flash-lite");
-		assert_eq!(config.get_model("$small-high")?, "wks-flash-high");
+		assert_eq!(config.get_model("$small-high")?, "wspace-flash-high");
 
 		Ok(())
 	}

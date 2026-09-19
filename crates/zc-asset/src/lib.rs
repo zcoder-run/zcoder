@@ -79,12 +79,12 @@ pub fn list_asset_paths(prefix: &str) -> Result<Vec<String>> {
 	Ok(paths)
 }
 
-/// Initialize or update the `.zcoder` directory in the target workspace with missing embedded `wks` assets.
+/// Initialize or update the `.zcoder` directory in the target workspace with missing embedded `wspace` assets.
 ///
 /// Existing files are preserved so user edits are never overwritten.
-pub fn update_wks_dir(wks_dir: impl AsRef<Path>) -> Result<()> {
-	let wks_dir = wks_dir.as_ref();
-	let zcoder_dir = wks_dir.join(ZCODER_DIR_NAME);
+pub fn update_wspace_dir(wspace_dir: impl AsRef<Path>) -> Result<()> {
+	let wspace_dir = wspace_dir.as_ref();
+	let zcoder_dir = wspace_dir.join(ZCODER_DIR_NAME);
 	if !zcoder_dir.exists() {
 		std::fs::create_dir_all(&zcoder_dir)?;
 	}
@@ -108,9 +108,9 @@ pub fn update_wks_dir(wks_dir: impl AsRef<Path>) -> Result<()> {
 	Ok(())
 }
 
-/// Alias for [`update_wks_dir`], kept for callers that still use the previous name.
+/// Alias for [`update_wspace_dir`], kept for callers that still use the previous name.
 pub fn update_zcoder_project(project_dir: impl AsRef<Path>) -> Result<()> {
-	update_wks_dir(project_dir)
+	update_wspace_dir(project_dir)
 }
 
 /// Initialize or update the `zc base` directory with the embedded base assets.
@@ -139,7 +139,7 @@ pub fn update_zbase_assets(zbase_dir: impl AsRef<Path>) -> Result<()> {
 
 // region:    --- Support
 
-const WKS_ASSET_PREFIX: &str = "wks/";
+const WKS_ASSET_PREFIX: &str = "wspace/";
 const ZCODER_DIR_NAME: &str = ".zcoder";
 
 const BASE_DEFAULT_ASSET: &str = "base/config-default.toml";
@@ -164,7 +164,7 @@ mod tests {
 
 		// -- Check
 		assert!(paths.contains(&"maestro/entry.tmpl".to_string()));
-		assert!(paths.contains(&"wks/config.toml".to_string()));
+		assert!(paths.contains(&"wspace/config.toml".to_string()));
 		assert!(paths.contains(&"base/config-default.toml".to_string()));
 		Ok(())
 	}
@@ -211,14 +211,14 @@ mod tests {
 	}
 
 	#[test]
-	fn test_asset_update_wks_dir() -> Result<()> {
+	fn test_asset_update_wspace_dir() -> Result<()> {
 		// -- Setup & Fixtures
 		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
-		let temp_dir = std::env::temp_dir().join(format!("zc_asset_test_wks_{nanos}"));
+		let temp_dir = std::env::temp_dir().join(format!("zc_asset_test_wspace_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 
 		// -- Exec
-		update_wks_dir(&temp_dir)?;
+		update_wspace_dir(&temp_dir)?;
 
 		// -- Check
 		let config_path = temp_dir.join(".zcoder").join("config.toml");
@@ -230,7 +230,7 @@ mod tests {
 		// Test non-overwrite behavior
 		let custom_content = "# custom modification\n[maestro]\nmodel = 'custom'";
 		std::fs::write(&config_path, custom_content)?;
-		update_wks_dir(&temp_dir)?;
+		update_wspace_dir(&temp_dir)?;
 		let content_after = std::fs::read_to_string(&config_path)?;
 		assert_eq!(content_after, custom_content);
 

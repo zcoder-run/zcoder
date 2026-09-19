@@ -4,7 +4,7 @@ mod config_impl;
 mod error;
 mod manager;
 
-pub use config_impl::{WksConfig, *};
+pub use config_impl::{WspaceConfig, *};
 pub use error::{Error, Result};
 pub use manager::*;
 

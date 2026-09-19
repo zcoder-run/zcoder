@@ -7,9 +7,9 @@ pub async fn run_model_change_loop(model_change_tx: ModelChangeTx) {
 	let mut model_rx = get_model_bus().subscribe();
 
 	while let Ok(event) = model_rx.recv().await {
-		let wks_id = event.rel_ids.wks_id.unwrap_or_default();
+		let wspace_id = event.rel_ids.wspace_id.unwrap_or_default();
 		let mut msg = RouterMsg::new(RouterMsgData::ModelChange(event));
-		msg.wks_id = wks_id;
+		msg.wspace_id = wspace_id;
 		if model_change_tx.send(msg).await.is_err() {
 			break;
 		}

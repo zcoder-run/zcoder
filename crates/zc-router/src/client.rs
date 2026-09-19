@@ -29,7 +29,7 @@ pub struct RouterClient {
 
 pub(crate) struct RouterClientInner {
 	pub(crate) outbound: Outbound,
-	pub(crate) wks_id: Mutex<Option<Id>>,
+	pub(crate) wspace_id: Mutex<Option<Id>>,
 	pub(crate) model_change_rx: Mutex<Option<ModelChangeRx>>,
 	pub(crate) exec_event_rx: Mutex<Option<ExecEventRx>>,
 	pub(crate) pending_replies: Mutex<Option<PendingReplyMap>>,
@@ -64,7 +64,7 @@ impl RouterClient {
 		let client = Self {
 			inner: Arc::new(RouterClientInner {
 				outbound: Outbound::InProc(router_msg_tx),
-				wks_id: Mutex::new(None),
+				wspace_id: Mutex::new(None),
 				model_change_rx: Mutex::new(Some(model_change_rx)),
 				exec_event_rx: Mutex::new(Some(exec_event_rx)),
 				pending_replies: Mutex::new(Some(HashMap::new())),
@@ -93,7 +93,7 @@ impl RouterClient {
 			.await?
 			.ok_or_else(|| Error::custom("connection closed during attach"))?;
 
-		let wks_id = match reply.data {
+		let wspace_id = match reply.data {
 			RouterMsgData::AttachOk(id) if reply.msg_id == attach_msg_id => id,
 			RouterMsgData::AttachErr(err) if reply.msg_id == attach_msg_id => return Err(Error::custom(err)),
 			_ => return Err(Error::custom("unexpected response during attach")),
@@ -130,7 +130,7 @@ impl RouterClient {
 			let conn = ClientConn::from_halves("router_client_uds", reader, writer, sink);
 			RouterClientInner {
 				outbound: Outbound::Uds(conn),
-				wks_id: Mutex::new(Some(wks_id)),
+				wspace_id: Mutex::new(Some(wspace_id)),
 				model_change_rx: Mutex::new(Some(model_rx)),
 				exec_event_rx: Mutex::new(Some(exec_rx)),
 				pending_replies: Mutex::new(Some(HashMap::new())),
@@ -160,10 +160,10 @@ impl RouterClient {
 
 	/// Sends a router message asynchronously.
 	pub async fn send(&self, mut msg: RouterMsg) -> Result<()> {
-		if msg.wks_id == Id::default()
-			&& let Some(wks_id) = self.wks_id()
+		if msg.wspace_id == Id::default()
+			&& let Some(wspace_id) = self.wspace_id()
 		{
-			msg.wks_id = wks_id;
+			msg.wspace_id = wspace_id;
 		}
 		match &self.inner.outbound {
 			Outbound::InProc(tx) => tx.send(msg).await.map_err(Into::into),
@@ -182,8 +182,8 @@ impl RouterClient {
 	}
 
 	/// Returns the workspace id assigned to this client, if any.
-	pub fn wks_id(&self) -> Option<Id> {
-		*self.inner.wks_id.lock().unwrap_or_else(|err| err.into_inner())
+	pub fn wspace_id(&self) -> Option<Id> {
+		*self.inner.wspace_id.lock().unwrap_or_else(|err| err.into_inner())
 	}
 
 	/// Takes the model change receiver if it has not been taken yet.
@@ -320,7 +320,7 @@ mod tests {
 		reply_tx
 			.send(RouterMsg {
 				msg_id: test_msg_id,
-				wks_id: Default::default(),
+				wspace_id: Default::default(),
 				data: RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(1234))),
 			})
 			.await?;
@@ -361,7 +361,7 @@ mod tests {
 		reply_tx_a
 			.send(RouterMsg {
 				msg_id,
-				wks_id: Default::default(),
+				wspace_id: Default::default(),
 				data: RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(10))),
 			})
 			.await?;
@@ -380,7 +380,7 @@ mod tests {
 		reply_tx_b
 			.send(RouterMsg {
 				msg_id,
-				wks_id: Default::default(),
+				wspace_id: Default::default(),
 				data: RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(20))),
 			})
 			.await?;
@@ -406,7 +406,7 @@ mod tests {
 		reply_tx
 			.send(RouterMsg {
 				msg_id: msg.msg_id,
-				wks_id: msg.wks_id,
+				wspace_id: msg.wspace_id,
 				data: RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(42))),
 			})
 			.await?;
@@ -476,7 +476,7 @@ mod tests {
 		impl WksResolver for PathStubResolver {
 			fn resolve<'a>(&'a self, info: &'a ClientInfo) -> BoxFuture<'a, crate::error::Result<Id>> {
 				Box::pin(async move {
-					let id_str = if info.wks_dir.ends_with("zc-a") {
+					let id_str = if info.wspace_dir.ends_with("zc-a") {
 						"00000000-0000-0000-0000-000000000001"
 					} else {
 						"00000000-0000-0000-0000-000000000002"
@@ -533,8 +533,8 @@ mod tests {
 				}
 			});
 
-			let client = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-wks")).await?;
-			assert_eq!(client.wks_id(), Some(assigned_id));
+			let client = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-wspace")).await?;
+			assert_eq!(client.wspace_id(), Some(assigned_id));
 
 			let size = crate::model_rpc::db_size(&client).await?;
 			assert_eq!(size, 42);
@@ -543,16 +543,16 @@ mod tests {
 		}
 
 		#[tokio::test]
-		async fn test_router_client_uds_fanout_filters_by_wks() -> Result<()> {
+		async fn test_router_client_uds_fanout_filters_by_wspace() -> Result<()> {
 			let (socket_path, _watch, _rpc_rx, model_tx) =
 				start_server("zc-router-test-uds-fanout.sock", Arc::new(PathStubResolver)).await?;
 
-			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-a")).await?;
-			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-b")).await?;
+			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-a")).await?;
+			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-b")).await?;
 
-			let wks_a = client_a.wks_id().ok_or("missing wks_a")?;
-			let wks_b = client_b.wks_id().ok_or("missing wks_b")?;
-			assert_ne!(wks_a, wks_b);
+			let wspace_a = client_a.wspace_id().ok_or("missing wspace_a")?;
+			let wspace_b = client_b.wspace_id().ok_or("missing wspace_b")?;
+			assert_ne!(wspace_a, wspace_b);
 
 			let mut model_rx_a = client_a.take_model_change_rx().ok_or("missing rx_a")?;
 			let mut model_rx_b = client_b.take_model_change_rx().ok_or("missing rx_b")?;
@@ -565,7 +565,7 @@ mod tests {
 			);
 			let event = RouterMsg {
 				msg_id: MsgId::new(50),
-				wks_id: wks_a,
+				wspace_id: wspace_a,
 				data: RouterMsgData::ModelChange(model_event),
 			};
 			model_tx.send(event).await?;
@@ -574,7 +574,10 @@ mod tests {
 			assert_eq!(received_a.msg_id.as_u64(), 50);
 
 			let timeout_b = tokio::time::timeout(Duration::from_millis(50), model_rx_b.recv()).await;
-			assert!(timeout_b.is_err(), "client b should not have received event for wks_a");
+			assert!(
+				timeout_b.is_err(),
+				"client b should not have received event for wspace_a"
+			);
 
 			Ok(())
 		}
@@ -588,7 +591,7 @@ mod tests {
 			let (socket_path, mut watch, _rpc_rx, _model_tx) =
 				start_server("zc-router-test-uds-attach-err.sock", resolver).await?;
 
-			let res = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-err")).await;
+			let res = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-err")).await;
 			assert!(res.is_err());
 			let err_msg = res.unwrap_err().to_string();
 			assert!(
@@ -603,7 +606,7 @@ mod tests {
 		}
 
 		#[tokio::test]
-		async fn test_router_client_uds_send_stamps_wks_id() -> Result<()> {
+		async fn test_router_client_uds_send_stamps_wspace_id() -> Result<()> {
 			let assigned_id = Id::try_from("00000000-0000-0000-0000-000000000088".to_string())?;
 			let resolver = Arc::new(StubResolver {
 				id: assigned_id,
@@ -612,9 +615,9 @@ mod tests {
 			let (socket_path, _watch, _rpc_rx, _model_tx) =
 				start_server("zc-router-test-uds-stamp.sock", resolver).await?;
 
-			let client = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-stamp")).await?;
+			let client = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-stamp")).await?;
 			let msg = RouterMsg::new(RouterMsgData::Exec(crate::exec::ExecCmd::RunPrompt("test".to_string())));
-			assert_eq!(msg.wks_id, Id::default());
+			assert_eq!(msg.wspace_id, Id::default());
 
 			client.send(msg).await?;
 			Ok(())
@@ -625,10 +628,10 @@ mod tests {
 			let (socket_path, _watch, _rpc_rx, model_tx) =
 				start_server("zc-router-test-uds-scoped.sock", Arc::new(PathStubResolver)).await?;
 
-			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-a")).await?;
-			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wks_dir("/home/dev/zc-b")).await?;
+			let client_a = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-a")).await?;
+			let client_b = RouterClient::uds(&socket_path, ClientInfo::from_wspace_dir("/home/dev/zc-b")).await?;
 
-			let wks_a = client_a.wks_id().ok_or("missing wks_a")?;
+			let wspace_a = client_a.wspace_id().ok_or("missing wspace_a")?;
 			let mut rx_a = client_a.take_model_change_rx().ok_or("missing rx_a")?;
 			let mut rx_b = client_b.take_model_change_rx().ok_or("missing rx_b")?;
 
@@ -638,18 +641,18 @@ mod tests {
 				Some(Id::default()),
 				RelIds {
 					run_id: None,
-					wks_id: Some(wks_a),
+					wspace_id: Some(wspace_a),
 				},
 			);
 			let msg = RouterMsg {
 				msg_id: MsgId::new(99),
-				wks_id: wks_a,
+				wspace_id: wspace_a,
 				data: RouterMsgData::ModelChange(event_data),
 			};
 			model_tx.send(msg).await?;
 
 			let recv_a = tokio::time::timeout(Duration::from_secs(1), rx_a.recv()).await??;
-			assert_eq!(recv_a.wks_id, wks_a);
+			assert_eq!(recv_a.wspace_id, wspace_a);
 
 			let recv_b = tokio::time::timeout(Duration::from_millis(50), rx_b.recv()).await;
 			assert!(recv_b.is_err());

@@ -37,32 +37,32 @@ pub async fn route(
 	msg: RouterMsg,
 ) -> Result<()> {
 	let msg_id = msg.msg_id;
-	let wks_id = msg.wks_id;
+	let wspace_id = msg.wspace_id;
 
 	match msg.data {
 		RouterMsgData::Exec(cmd) => {
-			route_exec(exec_cmd_tx, msg_id, wks_id, cmd).await?;
+			route_exec(exec_cmd_tx, msg_id, wspace_id, cmd).await?;
 		}
 		RouterMsgData::ModelRpcReq(req) => {
-			route_model_rpc_req(model_rpc_cmd_tx, reply_tx, msg_id, wks_id, req).await?;
+			route_model_rpc_req(model_rpc_cmd_tx, reply_tx, msg_id, wspace_id, req).await?;
 		}
 		RouterMsgData::ModelRpcRes(reply) => {
-			route_model_rpc_res(reply_tx, msg_id, wks_id, reply).await?;
+			route_model_rpc_res(reply_tx, msg_id, wspace_id, reply).await?;
 		}
 		RouterMsgData::ModelChange(event) => {
-			route_model_change(msg_id, wks_id, event).await?;
+			route_model_change(msg_id, wspace_id, event).await?;
 		}
 		RouterMsgData::ExecEvent(event) => {
-			route_exec_event(msg_id, wks_id, event).await?;
+			route_exec_event(msg_id, wspace_id, event).await?;
 		}
 		RouterMsgData::Attach(info) => {
-			route_attach(msg_id, wks_id, info).await?;
+			route_attach(msg_id, wspace_id, info).await?;
 		}
 		RouterMsgData::AttachOk(assigned) => {
-			route_attach_ok(msg_id, wks_id, assigned).await?;
+			route_attach_ok(msg_id, wspace_id, assigned).await?;
 		}
 		RouterMsgData::AttachErr(message) => {
-			route_attach_err(msg_id, wks_id, message).await?;
+			route_attach_err(msg_id, wspace_id, message).await?;
 		}
 	}
 
@@ -73,19 +73,19 @@ pub async fn route(
 
 // region:    --- Support
 
-async fn route_exec(exec_cmd_tx: &ExecCmdTx, msg_id: MsgId, wks_id: Id, cmd: ExecCmd) -> Result<()> {
-	tracing::debug!("->> route_exec msg_id={msg_id:?} wks_id={wks_id:?} cmd={cmd:?}");
-	exec_cmd_tx.send(ExecReq { wks_id, cmd }).await?;
+async fn route_exec(exec_cmd_tx: &ExecCmdTx, msg_id: MsgId, wspace_id: Id, cmd: ExecCmd) -> Result<()> {
+	tracing::debug!("->> route_exec msg_id={msg_id:?} wspace_id={wspace_id:?} cmd={cmd:?}");
+	exec_cmd_tx.send(ExecReq { wspace_id, cmd }).await?;
 	Ok(())
 }
 
-async fn route_model_change(msg_id: MsgId, wks_id: Id, event: ModelChangeEvent) -> Result<()> {
-	tracing::debug!("->> route_model_change msg_id={msg_id:?} wks_id={wks_id:?} event={event:?}");
+async fn route_model_change(msg_id: MsgId, wspace_id: Id, event: ModelChangeEvent) -> Result<()> {
+	tracing::debug!("->> route_model_change msg_id={msg_id:?} wspace_id={wspace_id:?} event={event:?}");
 	Ok(())
 }
 
-async fn route_exec_event(msg_id: MsgId, wks_id: Id, event: ExecEvent) -> Result<()> {
-	tracing::debug!("->> route_exec_event msg_id={msg_id:?} wks_id={wks_id:?} event={event:?}");
+async fn route_exec_event(msg_id: MsgId, wspace_id: Id, event: ExecEvent) -> Result<()> {
+	tracing::debug!("->> route_exec_event msg_id={msg_id:?} wspace_id={wspace_id:?} event={event:?}");
 	Ok(())
 }
 
@@ -93,10 +93,10 @@ async fn route_model_rpc_req(
 	model_rpc_cmd_tx: &ModelRpcCmdTx,
 	reply_tx: &RouterMsgTx,
 	msg_id: MsgId,
-	wks_id: Id,
+	wspace_id: Id,
 	req: ModelRpcReq,
 ) -> Result<()> {
-	tracing::debug!("->> route_model_rpc_req msg_id={msg_id:?} wks_id={wks_id:?} req={req:?}");
+	tracing::debug!("->> route_model_rpc_req msg_id={msg_id:?} wspace_id={wspace_id:?} req={req:?}");
 	let (res_tx, res_rx) = zc_common::event_base::new_once("model_rpc_local");
 	let cmd = req.into_cmd(res_tx);
 	model_rpc_cmd_tx.send(cmd).await?;
@@ -106,7 +106,7 @@ async fn route_model_rpc_req(
 		if let Ok(reply) = res_rx.recv().await {
 			let res_msg = RouterMsg {
 				msg_id,
-				wks_id,
+				wspace_id,
 				data: RouterMsgData::ModelRpcRes(reply),
 			};
 			if reply_tx.send(res_msg).await.is_err() {
@@ -118,30 +118,30 @@ async fn route_model_rpc_req(
 	Ok(())
 }
 
-async fn route_model_rpc_res(reply_tx: &RouterMsgTx, msg_id: MsgId, wks_id: Id, reply: ModelRpcReply) -> Result<()> {
-	tracing::debug!("->> route_model_rpc_res msg_id={msg_id:?} wks_id={wks_id:?} reply={reply:?}");
+async fn route_model_rpc_res(reply_tx: &RouterMsgTx, msg_id: MsgId, wspace_id: Id, reply: ModelRpcReply) -> Result<()> {
+	tracing::debug!("->> route_model_rpc_res msg_id={msg_id:?} wspace_id={wspace_id:?} reply={reply:?}");
 	reply_tx
 		.send(RouterMsg {
 			msg_id,
-			wks_id,
+			wspace_id,
 			data: RouterMsgData::ModelRpcRes(reply),
 		})
 		.await?;
 	Ok(())
 }
 
-async fn route_attach(msg_id: MsgId, wks_id: Id, info: ClientInfo) -> Result<()> {
-	tracing::debug!("->> route_attach msg_id={msg_id:?} wks_id={wks_id:?} info={info:?}");
+async fn route_attach(msg_id: MsgId, wspace_id: Id, info: ClientInfo) -> Result<()> {
+	tracing::debug!("->> route_attach msg_id={msg_id:?} wspace_id={wspace_id:?} info={info:?}");
 	Ok(())
 }
 
-async fn route_attach_ok(msg_id: MsgId, wks_id: Id, assigned: Id) -> Result<()> {
-	tracing::debug!("->> route_attach_ok msg_id={msg_id:?} wks_id={wks_id:?} assigned={assigned:?}");
+async fn route_attach_ok(msg_id: MsgId, wspace_id: Id, assigned: Id) -> Result<()> {
+	tracing::debug!("->> route_attach_ok msg_id={msg_id:?} wspace_id={wspace_id:?} assigned={assigned:?}");
 	Ok(())
 }
 
-async fn route_attach_err(msg_id: MsgId, wks_id: Id, message: String) -> Result<()> {
-	tracing::debug!("->> route_attach_err msg_id={msg_id:?} wks_id={wks_id:?} message={message}");
+async fn route_attach_err(msg_id: MsgId, wspace_id: Id, message: String) -> Result<()> {
+	tracing::debug!("->> route_attach_err msg_id={msg_id:?} wspace_id={wspace_id:?} message={message}");
 	Ok(())
 }
 

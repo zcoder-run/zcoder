@@ -9,7 +9,7 @@ use zc_core::model::Id;
 ///
 /// This mirrors the `RequestHandler` seam in the rust10x `ipc-socket-design`
 /// sample: the transport owns the mechanics, the application owns the meaning.
-/// `zc-router` turns a `wks_dir` into a `wks_id` without depending on the model
+/// `zc-router` turns a `wspace_dir` into a `wspace_id` without depending on the model
 /// layer. The future is boxed so the trait stays object-safe and the server can
 /// hold an `Arc<dyn WksResolver>`.
 pub trait WksResolver: Send + Sync + 'static {
@@ -36,16 +36,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_wks_resolver_stub_is_object_safe() -> Result<()> {
+	async fn test_wspace_resolver_stub_is_object_safe() -> Result<()> {
 		// -- Setup & Fixtures
-		let info = ClientInfo::from_wks_dir("/home/dev/zcoder");
+		let info = ClientInfo::from_wspace_dir("/home/dev/zcoder");
 		let resolver: std::sync::Arc<dyn WksResolver> = std::sync::Arc::new(StubResolver);
 
 		// -- Exec
-		let wks_id = resolver.resolve(&info).await?;
+		let wspace_id = resolver.resolve(&info).await?;
 
 		// -- Check
-		assert_eq!(wks_id, Id::default());
+		assert_eq!(wspace_id, Id::default());
 
 		Ok(())
 	}

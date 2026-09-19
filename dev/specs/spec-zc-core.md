@@ -18,7 +18,7 @@ crates/zc-core/src/
     exec_event.rs    # ExecCmd, ExecReq, ExecEvent, and channel aliases
   model/
     types.rs         # Id, EpochUs, EntityType, EntityAction, RelIds
-    entities/        # air, common, run, and wks entity types with their derives
+    entities/        # air, common, run, and wspace entity types with their derives
     bus/
       model_event.rs # ModelChangeEvent and its data
 ```
@@ -54,7 +54,7 @@ pub enum ExecCmd {
 }
 
 pub struct ExecReq {
-	pub wks_id: Id,
+	pub wspace_id: Id,
 	pub cmd: ExecCmd,
 }
 
@@ -73,11 +73,11 @@ pub type ExecEventRx = zc_common::event_base::MpscRx<ExecEvent>;
 pub type ExecEventTx = zc_common::event_base::MpscTx<ExecEvent>;
 ```
 
-`ExecCmd` carries frontend intent toward the router, which wraps it in `ExecReq` with the client's `wks_id` toward the executor. `ExecEvent` carries run lifecycle notifications back toward the frontends. The channel aliases keep every producer and consumer on the same bounded mpsc contract.
+`ExecCmd` carries frontend intent toward the router, which wraps it in `ExecReq` with the client's `wspace_id` toward the executor. `ExecEvent` carries run lifecycle notifications back toward the frontends. The channel aliases keep every producer and consumer on the same bounded mpsc contract.
 
 ## model
 
-- `model/types.rs` owns the shared model types: `Id`, `EpochUs`, `EntityType` (including `EntityType::Wks`), `EntityAction`, and `RelIds` (which includes `wks_id: Option<Id>`).
+- `model/types.rs` owns the shared model types: `Id`, `EpochUs`, `EntityType` (including `EntityType::Wks`), `EntityAction`, and `RelIds` (which includes `wspace_id: Option<Id>`).
 
 - `model/entities/` owns the entity struct types and their companions: `Run`, `RunForCreate`, `RunForUpdate`, `RunEndState`, `Air`, `AirForCreate`, `AirForUpdate`, `AirEndState`, `Wks`, `WksForCreate`, `ListRunOptions`, `ListAirOptions`, and `ListWksOptions`.
 

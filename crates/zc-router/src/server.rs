@@ -9,7 +9,7 @@ use crate::model_rpc::ModelRpcCmdTx;
 use crate::msg::{RouterMsg, RouterMsgData, RouterMsgTx, new_router_msg_channel};
 use crate::router::route;
 use crate::transport::{WireReader, WireWriter, is_live, unlink_if_exists};
-use crate::wks_resolver::WksResolver;
+use crate::wspace_resolver::WksResolver;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -31,7 +31,7 @@ pub struct RouterServer {
 	listener: UnixListener,
 	exec_cmd_tx: ExecCmdTx,
 	model_rpc_cmd_tx: ModelRpcCmdTx,
-	wks_resolver: Arc<dyn WksResolver>,
+	wspace_resolver: Arc<dyn WksResolver>,
 	model_change_rx: ModelChangeRx,
 	exec_event_rx: ExecEventRx,
 	registry: ConnRegistry,
@@ -59,7 +59,7 @@ impl RouterServer {
 		socket_path: impl AsRef<Path>,
 		exec_cmd_tx: ExecCmdTx,
 		model_rpc_cmd_tx: ModelRpcCmdTx,
-		wks_resolver: Arc<dyn WksResolver>,
+		wspace_resolver: Arc<dyn WksResolver>,
 		model_change_rx: ModelChangeRx,
 		exec_event_rx: ExecEventRx,
 	) -> Result<Self> {
@@ -78,7 +78,7 @@ impl RouterServer {
 			listener,
 			exec_cmd_tx,
 			model_rpc_cmd_tx,
-			wks_resolver,
+			wspace_resolver,
 			model_change_rx,
 			exec_event_rx,
 			registry,
@@ -101,7 +101,7 @@ impl RouterServer {
 			listener,
 			exec_cmd_tx,
 			model_rpc_cmd_tx,
-			wks_resolver,
+			wspace_resolver,
 			model_change_rx,
 			exec_event_rx,
 			registry,
@@ -116,10 +116,10 @@ impl RouterServer {
 			let (stream, _addr) = listener.accept().await?;
 			let exec_cmd_tx = exec_cmd_tx.clone();
 			let model_rpc_cmd_tx = model_rpc_cmd_tx.clone();
-			let wks_resolver = wks_resolver.clone();
+			let wspace_resolver = wspace_resolver.clone();
 			let registry = registry.clone();
 			tokio::spawn(async move {
-				if let Err(err) = handle_conn(stream, exec_cmd_tx, model_rpc_cmd_tx, wks_resolver, registry).await {
+				if let Err(err) = handle_conn(stream, exec_cmd_tx, model_rpc_cmd_tx, wspace_resolver, registry).await {
 					tracing::error!("->> service connection error: {err}");
 				}
 			});
@@ -165,7 +165,7 @@ async fn handle_conn(
 	stream: UnixStream,
 	exec_cmd_tx: ExecCmdTx,
 	model_rpc_cmd_tx: ModelRpcCmdTx,
-	wks_resolver: Arc<dyn WksResolver>,
+	wspace_resolver: Arc<dyn WksResolver>,
 	registry: ConnRegistry,
 ) -> Result<()> {
 	let (reader, writer) = stream.into_split();
@@ -197,13 +197,13 @@ async fn handle_conn(
 		return Ok(());
 	};
 
-	let wks_id = match wks_resolver.resolve(&info).await {
-		Ok(wks_id) => wks_id,
+	let wspace_id = match wspace_resolver.resolve(&info).await {
+		Ok(wspace_id) => wspace_id,
 		Err(err) => {
-			tracing::error!("->> attach failed for {}: {err}", info.wks_dir);
+			tracing::error!("->> attach failed for {}: {err}", info.wspace_dir);
 			let reply = RouterMsg {
 				msg_id: first.msg_id,
-				wks_id: Id::default(),
+				wspace_id: Id::default(),
 				data: RouterMsgData::AttachErr(err.reason()),
 			};
 			let _ = res_tx.send(reply).await;
@@ -216,13 +216,13 @@ async fn handle_conn(
 	// -- Register so base-originated events can reach this connection.
 	let conn_guard = ConnGuard {
 		registry: registry.clone(),
-		conn_id: registry.register(wks_id, info, res_tx.clone()),
+		conn_id: registry.register(wspace_id, info, res_tx.clone()),
 	};
 
 	let ack = RouterMsg {
 		msg_id: first.msg_id,
-		wks_id,
-		data: RouterMsgData::AttachOk(wks_id),
+		wspace_id,
+		data: RouterMsgData::AttachOk(wspace_id),
 	};
 	let _ = res_tx.send(ack).await;
 
@@ -258,7 +258,7 @@ type ConnId = u64;
 
 /// One attached connection: its workspace, its client info, and its response sender.
 struct ConnEntry {
-	wks_id: Id,
+	wspace_id: Id,
 	#[allow(dead_code)]
 	client_info: ClientInfo,
 	res_tx: RouterMsgTx,
@@ -289,18 +289,18 @@ impl ConnRegistry {
 		(registry, ConnWatch { rx: conn_count_rx })
 	}
 
-	fn register(&self, wks_id: Id, client_info: ClientInfo, res_tx: RouterMsgTx) -> ConnId {
+	fn register(&self, wspace_id: Id, client_info: ClientInfo, res_tx: RouterMsgTx) -> ConnId {
 		let mut inner = self.inner.lock().unwrap_or_else(|err| err.into_inner());
 		let conn_id = inner.next_id;
 		inner.next_id += 1;
 		tracing::debug!(
-			"->> client attached conn_id={conn_id} wks_id={wks_id:?} wks_dir={}",
-			client_info.wks_dir
+			"->> client attached conn_id={conn_id} wspace_id={wspace_id:?} wspace_dir={}",
+			client_info.wspace_dir
 		);
 		inner.conns.insert(
 			conn_id,
 			ConnEntry {
-				wks_id,
+				wspace_id,
 				client_info,
 				res_tx,
 			},
@@ -330,7 +330,7 @@ impl ConnRegistry {
 			inner
 				.conns
 				.values()
-				.filter(|entry| client_filter(entry.wks_id, &msg))
+				.filter(|entry| client_filter(entry.wspace_id, &msg))
 				.map(|entry| entry.res_tx.clone())
 				.collect()
 		};
@@ -390,9 +390,9 @@ mod tests {
 	#[tokio::test]
 	async fn test_server_attach_ok() -> Result<()> {
 		// -- Setup & Fixtures
-		let wks_id = test_wks_id("1")?;
+		let wspace_id = test_wspace_id("1")?;
 		let resolver: Arc<dyn WksResolver> = Arc::new(StubResolver {
-			id: wks_id,
+			id: wspace_id,
 			fail: false,
 		});
 		let (socket_path, _watch) = start_test_server("zc-router-test-attach-ok.sock", resolver).await?;
@@ -402,13 +402,13 @@ mod tests {
 		let mut writer = WireWriter::<_, RouterMsg>::new(write_half);
 
 		// -- Exec
-		writer.write_frame(&attach_msg(1, "/home/dev/zc-wks")).await?;
+		writer.write_frame(&attach_msg(1, "/home/dev/zc-wspace")).await?;
 		let reply = reader.read_frame().await?.ok_or("missing attach reply")?;
 
 		// -- Check
 		assert_eq!(reply.msg_id.as_u64(), 1);
 		match reply.data {
-			RouterMsgData::AttachOk(id) => assert_eq!(id, wks_id),
+			RouterMsgData::AttachOk(id) => assert_eq!(id, wspace_id),
 			_ => panic!("unexpected attach reply"),
 		}
 
@@ -429,7 +429,7 @@ mod tests {
 		let mut writer = WireWriter::<_, RouterMsg>::new(write_half);
 
 		// -- Exec
-		writer.write_frame(&attach_msg(2, "/home/dev/zc-wks")).await?;
+		writer.write_frame(&attach_msg(2, "/home/dev/zc-wspace")).await?;
 		let reply = reader.read_frame().await?.ok_or("missing attach reply")?;
 
 		// -- Check
@@ -451,7 +451,11 @@ mod tests {
 
 		// -- Exec: register
 		let (res_tx, _res_rx) = new_router_msg_channel();
-		let conn_id = registry.register(Id::default(), ClientInfo::from_wks_dir("/home/dev/zc-wks"), res_tx);
+		let conn_id = registry.register(
+			Id::default(),
+			ClientInfo::from_wspace_dir("/home/dev/zc-wspace"),
+			res_tx,
+		);
 
 		// -- Check
 		assert_eq!(watch.count(), 1);
@@ -466,17 +470,17 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_server_registry_broadcast_filters_by_wks_id() -> Result<()> {
+	async fn test_server_registry_broadcast_filters_by_wspace_id() -> Result<()> {
 		// -- Setup & Fixtures
 		let (registry, _watch) = ConnRegistry::new();
-		let wks_a = test_wks_id("1")?;
-		let wks_b = test_wks_id("2")?;
+		let wspace_a = test_wspace_id("1")?;
+		let wspace_b = test_wspace_id("2")?;
 		let (tx_b, mut rx_b) = new_router_msg_channel();
-		registry.register(wks_b, ClientInfo::from_wks_dir("/home/dev/zc-b"), tx_b);
+		registry.register(wspace_b, ClientInfo::from_wspace_dir("/home/dev/zc-b"), tx_b);
 
 		// -- Exec: one event for another workspace, then one for this workspace
-		registry.broadcast(make_exec_msg(1, wks_a, "other")).await;
-		registry.broadcast(make_exec_msg(2, wks_b, "mine")).await;
+		registry.broadcast(make_exec_msg(1, wspace_a, "other")).await;
+		registry.broadcast(make_exec_msg(2, wspace_b, "mine")).await;
 
 		// -- Check: only the matching event arrives
 		let received = rx_b.recv().await?;
@@ -522,23 +526,23 @@ mod tests {
 		Ok((socket_path, watch))
 	}
 
-	fn attach_msg(msg_id: u64, wks_dir: &str) -> RouterMsg {
+	fn attach_msg(msg_id: u64, wspace_dir: &str) -> RouterMsg {
 		RouterMsg {
 			msg_id: MsgId::new(msg_id),
-			wks_id: Id::default(),
-			data: RouterMsgData::Attach(ClientInfo::from_wks_dir(wks_dir)),
+			wspace_id: Id::default(),
+			data: RouterMsgData::Attach(ClientInfo::from_wspace_dir(wspace_dir)),
 		}
 	}
 
-	fn make_exec_msg(msg_id: u64, wks_id: Id, prompt: &str) -> RouterMsg {
+	fn make_exec_msg(msg_id: u64, wspace_id: Id, prompt: &str) -> RouterMsg {
 		RouterMsg {
 			msg_id: MsgId::new(msg_id),
-			wks_id,
+			wspace_id,
 			data: RouterMsgData::Exec(ExecCmd::RunPrompt(prompt.to_string())),
 		}
 	}
 
-	fn test_wks_id(tail: &str) -> Result<Id> {
+	fn test_wspace_id(tail: &str) -> Result<Id> {
 		let uuid = format!("00000000-0000-0000-0000-{tail:0>12}");
 		Ok(Id::try_from(uuid)?)
 	}

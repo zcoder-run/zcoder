@@ -11,5 +11,5 @@ pub enum EntityType {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelIds {
 	pub run_id: Option<Id>,
-	pub wks_id: Option<Id>,
+	pub wspace_id: Option<Id>,
 }

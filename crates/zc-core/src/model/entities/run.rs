@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct Run {
 	pub id: Id,
-	pub wks_id: Option<Id>,
+	pub wspace_id: Option<Id>,
 
 	pub ctime: EpochUs,
 	pub mtime: EpochUs,
@@ -25,14 +25,14 @@ pub struct Run {
 
 #[derive(Debug, Default, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct RunForCreate {
-	pub wks_id: Option<Id>,
+	pub wspace_id: Option<Id>,
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Fields, SqliteFromRow, Serialize, Deserialize)]
 pub struct RunForUpdate {
-	pub wks_id: Option<Id>,
+	pub wspace_id: Option<Id>,
 	pub prompt: Option<String>,
 	pub answer: Option<String>,
 	pub error: Option<String>,

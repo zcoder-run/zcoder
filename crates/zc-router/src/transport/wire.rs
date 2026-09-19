@@ -244,7 +244,7 @@ mod tests {
 
 		// -- Check
 		assert_eq!(actual.msg_id, msg.msg_id);
-		assert_eq!(actual.wks_id, msg.wks_id);
+		assert_eq!(actual.wspace_id, msg.wspace_id);
 		assert!(matches!(
 			actual.data,
 			RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(42)))

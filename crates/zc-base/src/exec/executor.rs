@@ -19,7 +19,7 @@ struct ExecutorInner {
 	// State needed for execution
 	genai_client: genai::Client,
 	base_chat_req: ChatRequest,
-	wks_dir: SPath,
+	wspace_dir: SPath,
 	base_dir: Option<SPath>,
 	model: Option<String>,
 	config_manager: ConfigManager,
@@ -28,7 +28,7 @@ struct ExecutorInner {
 
 #[derive(Debug, Clone)]
 pub struct ExecutorConfig {
-	wks_dir: SPath,
+	wspace_dir: SPath,
 	base_dir: Option<SPath>,
 	zbase_dir: Option<SPath>,
 	model: Option<String>,
@@ -36,9 +36,9 @@ pub struct ExecutorConfig {
 
 impl Default for ExecutorConfig {
 	fn default() -> Self {
-		let wks_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
+		let wspace_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
 		Self {
-			wks_dir,
+			wspace_dir,
 			base_dir: None,
 			zbase_dir: None,
 			model: None,
@@ -47,8 +47,8 @@ impl Default for ExecutorConfig {
 }
 
 impl ExecutorConfig {
-	pub fn with_wks_dir(mut self, wks_dir: impl Into<SPath>) -> Self {
-		self.wks_dir = wks_dir.into();
+	pub fn with_wspace_dir(mut self, wspace_dir: impl Into<SPath>) -> Self {
+		self.wspace_dir = wspace_dir.into();
 		self
 	}
 
@@ -97,7 +97,7 @@ impl Executor {
 					status_tx,
 					genai_client: genai::Client::new()?,
 					base_chat_req,
-					wks_dir: config.wks_dir,
+					wspace_dir: config.wspace_dir,
 					base_dir: config.base_dir,
 					model: config.model,
 					config_manager,
@@ -115,10 +115,10 @@ impl Executor {
 		let mm = get_model_manager()?;
 
 		while let Ok(action) = action_rx.recv().await {
-			let ExecReq { wks_id, cmd } = action;
+			let ExecReq { wspace_id, cmd } = action;
 			match cmd {
 				ExecCmd::RunPrompt(prompt) => {
-					let _ = inner.handle_run_prompt(mm, wks_id, prompt).await;
+					let _ = inner.handle_run_prompt(mm, wspace_id, prompt).await;
 				}
 			}
 		}
@@ -128,10 +128,10 @@ impl Executor {
 }
 
 impl ExecutorInner {
-	async fn handle_run_prompt(&self, mm: &'static ModelManager, wks_id: Id, prompt: String) -> Result<()> {
+	async fn handle_run_prompt(&self, mm: &'static ModelManager, wspace_id: Id, prompt: String) -> Result<()> {
 		// -- Create in the DB
 		let run_c = RunForCreate {
-			wks_id: Some(wks_id),
+			wspace_id: Some(wspace_id),
 			prompt: Some(prompt.clone()),
 			answer: None,
 		};
@@ -144,22 +144,26 @@ impl ExecutorInner {
 		let script_engine = self.script_engine.clone();
 
 		// -- Resolve workspace directory and config dynamically
-		let req_wks_dir = match crate::model::WksBmc::get(mm, wks_id).await {
-			Ok(wks) => {
-				let wks_dir = SPath::from(wks.dir);
-				let _ = zc_asset::update_wks_dir(&wks_dir);
-				wks_dir
+		let req_wspace_dir = match crate::model::WksBmc::get(mm, wspace_id).await {
+			Ok(wspace) => {
+				let wspace_dir = SPath::from(wspace.dir);
+				let _ = zc_asset::update_wspace_dir(&wspace_dir);
+				wspace_dir
 			}
 			Err(_) => {
-				tracing::warn!("->> unknown wks_id '{wks_id}', falling back to default wks_dir");
-				self.wks_dir.clone()
+				tracing::warn!("->> unknown wspace_id '{wspace_id}', falling back to default wspace_dir");
+				self.wspace_dir.clone()
 			}
 		};
 
-		let active_config = self.config_manager.resolve_for_wks(mm, Some(wks_id)).await.unwrap_or_else(|e| {
-			tracing::warn!("->> failed to resolve wks config for wks_id {wks_id}: {e}");
-			self.config_manager.get_config()
-		});
+		let active_config = self
+			.config_manager
+			.resolve_for_wspace(mm, Some(wspace_id))
+			.await
+			.unwrap_or_else(|e| {
+				tracing::warn!("->> failed to resolve wspace config for wspace_id {wspace_id}: {e}");
+				self.config_manager.get_config()
+			});
 
 		let model_ref = self.model.as_deref().unwrap_or(active_config.maestro_model());
 		let resolved_model = active_config.get_model(model_ref)?;
@@ -168,16 +172,16 @@ impl ExecutorInner {
 			if base_dir.is_absolute() {
 				base_dir.clone()
 			} else {
-				req_wks_dir.join(base_dir)
+				req_wspace_dir.join(base_dir)
 			}
-		} else if let Some(config_working_dir) = active_config.wks_dir() {
+		} else if let Some(config_working_dir) = active_config.wspace_dir() {
 			if config_working_dir.is_absolute() {
 				config_working_dir.clone()
 			} else {
-				req_wks_dir.join(config_working_dir)
+				req_wspace_dir.join(config_working_dir)
 			}
 		} else {
-			req_wks_dir.clone()
+			req_wspace_dir.clone()
 		};
 
 		// Use an async block with an explicit type annotation
@@ -191,8 +195,16 @@ impl ExecutorInner {
 			chat_req = chat_req.append_message(ChatMessage::user(prompt));
 
 			// -- Execute Air Request
-			let (res, _air_id) =
-				exec_air_chat(mm, &genai_client, &resolved_model, chat_req, run_id, Some(wks_id), None).await?;
+			let (res, _air_id) = exec_air_chat(
+				mm,
+				&genai_client,
+				&resolved_model,
+				chat_req,
+				run_id,
+				Some(wspace_id),
+				None,
+			)
+			.await?;
 
 			if let Some(raw_body) = res.captured_raw_body.as_ref() {
 				let content = raw_body.x_pretty().unwrap_or_else(|e| e.to_string());
@@ -475,7 +487,7 @@ mod tests {
 
 		// -- Exec
 		let config = ExecutorConfig::default()
-			.with_wks_dir(temp_spath.clone())
+			.with_wspace_dir(temp_spath.clone())
 			.with_base_dir(temp_spath.join("demo"))
 			.with_zbase_dir(temp_spath.join("zbase"));
 		let (executor, _tx, _rx) = Executor::new(config)?;
@@ -501,7 +513,7 @@ mod tests {
 		let zbase_dir = temp_spath.join("zbase");
 
 		let config = ExecutorConfig::default()
-			.with_wks_dir(temp_spath.clone())
+			.with_wspace_dir(temp_spath.clone())
 			.with_zbase_dir(zbase_dir.clone());
 		let (executor, _tx, _rx) = Executor::new(config)?;
 
@@ -544,17 +556,17 @@ big = "custom-model"
 	}
 
 	#[test]
-	fn test_exec_new_does_not_create_wks_dir_under_zbase() -> Result<()> {
+	fn test_exec_new_does_not_create_wspace_dir_under_zbase() -> Result<()> {
 		// -- Setup & Fixtures
 		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
-		let temp_dir = std::env::temp_dir().join(format!("zc_exec_no_wks_under_zbase_{nanos}"));
+		let temp_dir = std::env::temp_dir().join(format!("zc_exec_no_wspace_under_zbase_{nanos}"));
 		std::fs::create_dir_all(&temp_dir)?;
 		let temp_spath = SPath::from_std_path_buf(temp_dir.clone())?;
 		let zbase_dir = temp_spath.join("zbase");
 
 		// -- Exec
 		let config = ExecutorConfig::default()
-			.with_wks_dir(zbase_dir.clone())
+			.with_wspace_dir(zbase_dir.clone())
 			.with_zbase_dir(zbase_dir.clone());
 		let (_executor, _tx, _rx) = Executor::new(config)?;
 

@@ -130,8 +130,8 @@ Details:
 The root binary (`zcoder`, bin `zc`) acts as both the client entry point and the background server runner:
 
 1. **Default Invocation (`zc [prompt] [--dir <dir>]`)**:
-   - Resolves workspace root (`find_wks_dir`).
-   - Sets up debug logging in `<wks_dir>/.zcoder/debug-log/log.txt`.
+   - Resolves workspace root (`find_wspace_dir`).
+   - Sets up debug logging in `<wspace_dir>/.zcoder/debug-log/log.txt`.
    - Connects to `/tmp/zcoder-base.sock` using `RouterClient::uds`.
    - If not running, spawns `zc base` detached, retrying connection with backoff.
    - Starts the TUI (`zc_tui::start_tui`).
@@ -203,12 +203,12 @@ Dependencies:
 root main (zc)
   -> parse CLI
   -> if command == Some(SubCmd::Base) -> run_base_cmd()
-  -> resolve wks_dir via find_wks_dir(&from_dir)
-  -> init tracing to wks_log_file(&wks_dir)
+  -> resolve wspace_dir via find_wspace_dir(&from_dir)
+  -> init tracing to wspace_log_file(&wspace_dir)
   -> connect_or_spawn(/tmp/zcoder-base.sock, client_info)
        -> RouterClient::uds connect probe
        -> if offline: spawn detached `current_exe() base` and retry with backoff
-       -> Attach handshake: send ClientInfo, receive AttachOk(wks_id)
+       -> Attach handshake: send ClientInfo, receive AttachOk(wspace_id)
   -> zc_tui::start_tui(router_client, cli_cmd.prompt).await
 ```
 
@@ -229,7 +229,7 @@ All path names, directory markers, socket paths, and timeouts are centralized in
 // zc-router::msg
 pub struct RouterMsg {
     pub msg_id: MsgId,
-    pub wks_id: Id,
+    pub wspace_id: Id,
     pub data: RouterMsgData,
 }
 
@@ -250,7 +250,7 @@ pub enum ExecCmd {
 }
 
 pub struct ExecReq {
-    pub wks_id: Id,
+    pub wspace_id: Id,
     pub cmd: ExecCmd,
 }
 
@@ -265,7 +265,7 @@ pub struct ModelChangeEvent {
     entity: EntityType,   // Run, Aixc, ...
     action: EntityAction, // Created, Updated, ...
     id: Option<Id>,
-    rel_ids: RelIds,      // includes wks_id: Option<Id>
+    rel_ids: RelIds,      // includes wspace_id: Option<Id>
 }
 
 // zc-tui::core
@@ -306,7 +306,7 @@ Action flow across processes:
 ```text
 Terminal input -> TuiEvent::Term  -> tui_event_handlers
 App intent     -> TuiEvent::Action -> state + RouterClient -> [UDS wire] -> RouterServer -> base
-Base           -> event fanout -> client_filter(wks_id) -> [UDS wire] -> RouterClient -> TuiEvent::Exec / Model -> state update
+Base           -> event fanout -> client_filter(wspace_id) -> [UDS wire] -> RouterClient -> TuiEvent::Exec / Model -> state update
 ```
 
 ## Execution Pipeline
@@ -321,7 +321,7 @@ The `RunPrompt` path spans the TUI, the router, and `zc-base`.
 
 4. Workspace assets are re-synced and the config is hot reloaded before each run.
 
-5. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wks_dir`.
+5. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from `--dir`, `[workspace] working_dir`, or `wspace_dir`.
 
 6. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
 

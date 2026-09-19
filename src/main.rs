@@ -9,7 +9,7 @@ pub use error::{Error, Result};
 use simple_fs::SPath;
 use tracing_appender::rolling::never;
 use tracing_subscriber::EnvFilter;
-use zc_common::dirs::{find_wks_dir, wks_log_file};
+use zc_common::dirs::{find_wspace_dir, wspace_log_file};
 use zc_router::ClientInfo;
 use zc_router::transport::socket_path;
 
@@ -30,13 +30,13 @@ async fn main() -> Result<()> {
 	} else {
 		simple_fs::current_dir()?
 	};
-	let wks_dir = find_wks_dir(&from_dir).unwrap_or(from_dir);
+	let wspace_dir = find_wspace_dir(&from_dir).unwrap_or(from_dir);
 
 	// -- Setup debug tracing_subscriber
 	// NOTE: need to keep the handle, otherwise dropped, and nothing get added to the file
 	let _tracing_guard = if DEBUG_LOG {
-		let log_file = wks_log_file(&wks_dir);
-		let log_dir = log_file.parent().unwrap_or_else(|| wks_dir.clone());
+		let log_file = wspace_log_file(&wspace_dir);
+		let log_dir = log_file.parent().unwrap_or_else(|| wspace_dir.clone());
 		let file_name = log_file.file_name().unwrap_or(zc_common::consts::DEBUG_LOG_FILE_NAME);
 		let file_appender = never(log_dir.as_str(), file_name);
 		let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
 	println!();
 
 	let sock_path = socket_path();
-	let client_info = ClientInfo::from_wks_dir(wks_dir.as_str());
+	let client_info = ClientInfo::from_wspace_dir(wspace_dir.as_str());
 	let client = base_spawner::connect_or_spawn(&sock_path, client_info).await?;
 
 	// -- Running Tui application

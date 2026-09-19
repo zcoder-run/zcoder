@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecReq {
-	pub wks_id: Id,
+	pub wspace_id: Id,
 	pub cmd: ExecCmd,
 }
 

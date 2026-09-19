@@ -11,11 +11,11 @@ pub async fn exec_air_chat(
 	model: &str,
 	chat_req: ChatRequest,
 	run_id: Id,
-	wks_id: Option<Id>,
+	wspace_id: Option<Id>,
 	label: Option<&str>,
 ) -> Result<(ChatResponse, Id)> {
 	let start = EpochUs::now();
-	let air_c = prep_air_for_create(run_id, wks_id, Some(model), &chat_req, start, label);
+	let air_c = prep_air_for_create(run_id, wspace_id, Some(model), &chat_req, start, label);
 	let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 	let ai_start = EpochUs::now();
@@ -46,7 +46,7 @@ pub async fn exec_air_chat(
 /// Prepares an `AirForCreate` struct with request payloads and initial timestamps.
 pub fn prep_air_for_create(
 	run_id: Id,
-	wks_id: Option<Id>,
+	wspace_id: Option<Id>,
 	model_ov: Option<&str>,
 	chat_req: &ChatRequest,
 	start: EpochUs,
@@ -56,7 +56,7 @@ pub fn prep_air_for_create(
 
 	AirForCreate {
 		run_id,
-		wks_id,
+		wspace_id,
 		label: label.map(String::from),
 		model_ov: model_ov.map(String::from),
 		model_upstream: None,
@@ -247,7 +247,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("full lifecycle test".to_string()),
 			answer: None,
 		};
@@ -338,7 +338,7 @@ mod tests {
 	fn air_for_create(run_id: Id) -> AirForCreate {
 		AirForCreate {
 			run_id,
-			wks_id: None,
+			wspace_id: None,
 			label: None,
 			model_ov: None,
 			model_upstream: None,

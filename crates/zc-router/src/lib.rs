@@ -16,7 +16,7 @@ pub mod router;
 #[cfg(feature = "server")]
 pub mod server;
 pub mod transport;
-pub mod wks_resolver;
+pub mod wspace_resolver;
 
 pub use client::RouterClient;
 pub use client_filter::client_filter;
@@ -32,6 +32,6 @@ pub use msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx, new_router_msg
 pub use router::{route, run_router};
 #[cfg(feature = "server")]
 pub use server::{ConnWatch, RouterServer};
-pub use wks_resolver::WksResolver;
+pub use wspace_resolver::WksResolver;
 
 // endregion: --- Modules

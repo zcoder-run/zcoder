@@ -213,7 +213,7 @@ mod tests {
 		let expected_msg_id = MsgId::new(42);
 		let frame = RouterMsg {
 			msg_id: expected_msg_id,
-			wks_id: Default::default(),
+			wspace_id: Default::default(),
 			data: RouterMsgData::ModelRpcRes(ModelRpcReply::DbSize(Ok(7))),
 		};
 

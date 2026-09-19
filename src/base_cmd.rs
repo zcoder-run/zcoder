@@ -26,7 +26,7 @@ pub async fn run_base_cmd() -> Result<()> {
 	let BaseParts {
 		exec_cmd_tx,
 		model_rpc_cmd_tx,
-		wks_resolver,
+		wspace_resolver,
 		model_change_rx,
 		exec_event_rx,
 	} = start_base_parts(base_config)?;
@@ -35,7 +35,7 @@ pub async fn run_base_cmd() -> Result<()> {
 		&sock_path,
 		exec_cmd_tx,
 		model_rpc_cmd_tx,
-		wks_resolver,
+		wspace_resolver,
 		model_change_rx,
 		exec_event_rx,
 	)

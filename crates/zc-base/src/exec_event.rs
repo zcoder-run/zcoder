@@ -12,16 +12,16 @@ pub async fn run_exec_event_loop(mut exec_event_rx: ExecEventRx, exec_event_tx: 
 			zc_core::exec::ExecEvent::RunEnd(id) => *id,
 			zc_core::exec::ExecEvent::RunError(id) => *id,
 		};
-		let wks_id = if let Ok(mm) = get_model_manager()
+		let wspace_id = if let Ok(mm) = get_model_manager()
 			&& let Ok(run) = RunBmc::get(mm, run_id).await
-			&& let Some(wks_id) = run.wks_id
+			&& let Some(wspace_id) = run.wspace_id
 		{
-			wks_id
+			wspace_id
 		} else {
 			Id::default()
 		};
 		let mut msg = RouterMsg::new(RouterMsgData::ExecEvent(exec_event));
-		msg.wks_id = wks_id;
+		msg.wspace_id = wspace_id;
 		if exec_event_tx.send(msg).await.is_err() {
 			break;
 		}

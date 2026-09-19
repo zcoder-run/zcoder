@@ -8,15 +8,15 @@ use std::path::Path;
 pub struct WksBmc;
 
 impl DbBmc for WksBmc {
-	const TABLE: &'static str = "wks";
+	const TABLE: &'static str = "wspace";
 	const ENTITY_TYPE: EntityType = EntityType::Wks;
 }
 
 /// Basic CRUD
 impl WksBmc {
 	#[allow(unused)]
-	pub async fn create(mm: &ModelManager, wks_c: WksForCreate) -> Result<Id> {
-		let fields = wks_c.sqlite_not_none_fields();
+	pub async fn create(mm: &ModelManager, wspace_c: WksForCreate) -> Result<Id> {
+		let fields = wspace_c.sqlite_not_none_fields();
 		support::create::<Self>(mm, fields).await
 	}
 
@@ -36,7 +36,7 @@ impl WksBmc {
 		support::first::<Self, Wks>(mm, None, Some(filter_fields)).await
 	}
 
-	/// Resolves a workspace directory to its `wks_id`, creating the row when missing.
+	/// Resolves a workspace directory to its `wspace_id`, creating the row when missing.
 	///
 	/// The directory is normalized to an absolute path first, so two clients
 	/// spelling the same workspace differently resolve to one row.
@@ -44,8 +44,8 @@ impl WksBmc {
 		let dir = normalize_dir(dir.into())?;
 
 		// -- Fast path: the directory is already known
-		if let Some(wks) = Self::get_by_dir(mm, &dir).await? {
-			return Ok(wks.id);
+		if let Some(wspace) = Self::get_by_dir(mm, &dir).await? {
+			return Ok(wspace.id);
 		}
 
 		// -- Insert only when still missing, so two clients racing on the same dir cannot both insert
@@ -60,10 +60,10 @@ impl WksBmc {
 		}
 
 		// -- The row appeared between the check and the insert, so read it back
-		let wks = Self::get_by_dir(mm, &dir)
+		let wspace = Self::get_by_dir(mm, &dir)
 			.await?
-			.ok_or_else(|| format!("Cannot resolve wks for dir: {dir}"))?;
-		Ok(wks.id)
+			.ok_or_else(|| format!("Cannot resolve wspace for dir: {dir}"))?;
+		Ok(wspace.id)
 	}
 }
 
@@ -105,13 +105,13 @@ mod tests {
 	use crate::model::get_model_manager;
 
 	#[tokio::test]
-	async fn test_model_wks_bmc_get_or_create_same_dir_same_id() -> Result<()> {
+	async fn test_model_wspace_bmc_get_or_create_same_dir_same_id() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 
 		// -- Exec
-		let id_first = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wks-same-dir", None).await?;
-		let id_second = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wks-same-dir", None).await?;
+		let id_first = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wspace-same-dir", None).await?;
+		let id_second = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wspace-same-dir", None).await?;
 
 		// -- Check
 		assert_eq!(id_first, id_second);
@@ -120,13 +120,13 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_model_wks_bmc_get_or_create_diff_dir_diff_id() -> Result<()> {
+	async fn test_model_wspace_bmc_get_or_create_diff_dir_diff_id() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 
 		// -- Exec
-		let id_a = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wks-dir-a", None).await?;
-		let id_b = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wks-dir-b", None).await?;
+		let id_a = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wspace-dir-a", None).await?;
+		let id_b = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wspace-dir-b", None).await?;
 
 		// -- Check
 		assert_ne!(id_a, id_b);
@@ -135,17 +135,17 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_model_wks_bmc_get_or_create_keeps_label() -> Result<()> {
+	async fn test_model_wspace_bmc_get_or_create_keeps_label() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 
 		// -- Exec
-		let id = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wks-label", Some("dev/zcoder".to_string())).await?;
+		let id = WksBmc::get_or_create_by_dir(mm, "/tmp/zc-test-wspace-label", Some("dev/zcoder".to_string())).await?;
 
 		// -- Check
-		let wks = WksBmc::get(mm, id).await?;
-		assert_eq!(wks.id, id);
-		assert_eq!(wks.label.as_deref(), Some("dev/zcoder"));
+		let wspace = WksBmc::get(mm, id).await?;
+		assert_eq!(wspace.id, id);
+		assert_eq!(wspace.label.as_deref(), Some("dev/zcoder"));
 
 		Ok(())
 	}

@@ -7,7 +7,7 @@ pub mod model;
 mod model_change;
 mod model_rpc;
 mod prompts;
-mod wks_resolver;
+mod wspace_resolver;
 
 use crate::exec::{Executor, ExecutorConfig};
 // endregion: --- Modules
@@ -17,7 +17,7 @@ pub use model::Db;
 use model_change::run_model_change_loop;
 use model_rpc::run_model_rpc_handler;
 use simple_fs::SPath;
-pub use wks_resolver::BaseWksResolver;
+pub use wspace_resolver::BaseWksResolver;
 use zc_core::exec::ExecEventRx;
 use zc_router::{
 	ModelChangeRx, RouterClient, RouterMsgRx, RouterMsgTx, new_exec_event_channel, new_model_change_channel,
@@ -29,16 +29,16 @@ use zc_router::{
 /// Configuration for the in-process `zc-base` server.
 #[derive(Debug, Clone)]
 pub struct ZcBaseConfig {
-	wks_dir: SPath,
+	wspace_dir: SPath,
 	base_dir: Option<SPath>,
 	model: Option<String>,
 }
 
 impl Default for ZcBaseConfig {
 	fn default() -> Self {
-		let wks_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
+		let wspace_dir = simple_fs::current_dir().unwrap_or_else(|_| SPath::from("."));
 		Self {
-			wks_dir,
+			wspace_dir,
 			base_dir: None,
 			model: None,
 		}
@@ -46,8 +46,8 @@ impl Default for ZcBaseConfig {
 }
 
 impl ZcBaseConfig {
-	pub fn with_wks_dir(mut self, wks_dir: impl Into<SPath>) -> Self {
-		self.wks_dir = wks_dir.into();
+	pub fn with_wspace_dir(mut self, wspace_dir: impl Into<SPath>) -> Self {
+		self.wspace_dir = wspace_dir.into();
 		self
 	}
 
@@ -62,7 +62,7 @@ impl ZcBaseConfig {
 	}
 
 	fn into_executor_config(self) -> ExecutorConfig {
-		let mut executor_config = ExecutorConfig::default().with_wks_dir(self.wks_dir);
+		let mut executor_config = ExecutorConfig::default().with_wspace_dir(self.wspace_dir);
 		if let Some(base_dir) = self.base_dir {
 			executor_config = executor_config.with_base_dir(base_dir);
 		}
@@ -111,7 +111,7 @@ fn start_base_core(config: ZcBaseConfig) -> crate::exec::Result<(RouterMsgTx, Ex
 pub struct BaseParts {
 	pub exec_cmd_tx: zc_core::exec::ExecCmdTx,
 	pub model_rpc_cmd_tx: zc_router::ModelRpcCmdTx,
-	pub wks_resolver: std::sync::Arc<dyn zc_router::WksResolver>,
+	pub wspace_resolver: std::sync::Arc<dyn zc_router::WksResolver>,
 	pub model_change_rx: zc_router::ModelChangeRx,
 	pub exec_event_rx: zc_router::ExecEventRx,
 }
@@ -137,12 +137,12 @@ pub fn start_base_parts(config: ZcBaseConfig) -> crate::exec::Result<BaseParts> 
 	let (exec_event_tx, exec_event_rx) = new_exec_event_channel();
 	tokio::spawn(async move { run_exec_event_loop(exec_event_source_rx, exec_event_tx).await });
 
-	let wks_resolver = std::sync::Arc::new(BaseWksResolver);
+	let wspace_resolver = std::sync::Arc::new(BaseWksResolver);
 
 	Ok(BaseParts {
 		exec_cmd_tx,
 		model_rpc_cmd_tx,
-		wks_resolver,
+		wspace_resolver,
 		model_change_rx,
 		exec_event_rx,
 	})

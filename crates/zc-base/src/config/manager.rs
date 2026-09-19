@@ -55,36 +55,36 @@ impl ConfigManager {
 		Config::from(inner)
 	}
 
-	pub async fn resolve_for_wks(&self, mm: &ModelManager, wks_id: Option<Id>) -> Result<Config> {
-		let Some(wks_id) = wks_id else {
+	pub async fn resolve_for_wspace(&self, mm: &ModelManager, wspace_id: Option<Id>) -> Result<Config> {
+		let Some(wspace_id) = wspace_id else {
 			self.refresh_if_modified()?;
 			return Ok(self.get_config());
 		};
 
-		if wks_id == Id::default() {
+		if wspace_id == Id::default() {
 			self.refresh_if_modified()?;
 			return Ok(self.get_config());
 		}
 
-		let wks = match WksBmc::get(mm, wks_id).await {
-			Ok(wks) => wks,
+		let wspace = match WksBmc::get(mm, wspace_id).await {
+			Ok(wspace) => wspace,
 			Err(_) => {
-				tracing::warn!("->> unknown wks_id '{wks_id}', falling back to base config");
+				tracing::warn!("->> unknown wspace_id '{wspace_id}', falling back to base config");
 				self.refresh_if_modified()?;
 				return Ok(self.get_config());
 			}
 		};
 
-		let wks_dir = SPath::from(wks.dir);
-		self.resolve_for_wks_dir(wks_id, &wks_dir)
+		let wspace_dir = SPath::from(wspace.dir);
+		self.resolve_for_wspace_dir(wspace_id, &wspace_dir)
 	}
 
 	/// Resolves the effective configuration for a workspace directory, layering
 	/// the base configs and the workspace config fresh from disk on every call.
-	pub fn resolve_for_wks_dir(&self, wks_id: Id, wks_dir: &SPath) -> Result<Config> {
-		tracing::debug!("->> resolving fresh config for wks_id {wks_id}");
-		let wks_config_path = wks_dir.join(".zcoder").join("config.toml");
-		self.layer_wks_config(&wks_config_path)
+	pub fn resolve_for_wspace_dir(&self, wspace_id: Id, wspace_dir: &SPath) -> Result<Config> {
+		tracing::debug!("->> resolving fresh config for wspace_id {wspace_id}");
+		let wspace_config_path = wspace_dir.join(".zcoder").join("config.toml");
+		self.layer_wspace_config(&wspace_config_path)
 	}
 
 	pub fn refresh_if_modified(&self) -> Result<bool> {
@@ -151,10 +151,10 @@ impl ConfigManager {
 		})
 	}
 
-	fn layer_wks_config(&self, wks_config_path: &SPath) -> Result<Config> {
+	fn layer_wspace_config(&self, wspace_config_path: &SPath) -> Result<Config> {
 		let mut layers = base_layer_strs(&self.config_path, self.default_config_path.as_ref())?;
-		if wks_config_path.exists() {
-			layers.push(fs::read_to_string(wks_config_path)?);
+		if wspace_config_path.exists() {
+			layers.push(fs::read_to_string(wspace_config_path)?);
 		}
 		layer_strs_to_config(&layers)
 	}
@@ -319,7 +319,7 @@ sol = "gpt-5.6-sol"
 	}
 
 	#[tokio::test]
-	async fn test_config_manager_resolve_for_wks() -> Result<()> {
+	async fn test_config_manager_resolve_for_wspace() -> Result<()> {
 		let mm = crate::model::get_model_manager()?;
 
 		let tmp_base_path =
@@ -339,36 +339,36 @@ my_alias = "base-target"
 		let manager = ConfigManager::from_file(&tmp_base_path)?;
 
 		// 1. Base-only config resolves
-		let base_resolved = manager.resolve_for_wks(mm, None).await?;
+		let base_resolved = manager.resolve_for_wspace(mm, None).await?;
 		assert_eq!(base_resolved.get_model("my_alias")?, "base-target");
 
 		// 2. Workspace config overrides model alias
-		let tmp_wks_dir =
-			SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_wks_{}", uuid::Uuid::new_v4()));
-		let wks_dot_dir = tmp_wks_dir.join(".zcoder");
-		simple_fs::ensure_dir(&wks_dot_dir)?;
-		let wks_toml = r#"
+		let tmp_wspace_dir =
+			SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_wspace_{}", uuid::Uuid::new_v4()));
+		let wspace_dot_dir = tmp_wspace_dir.join(".zcoder");
+		simple_fs::ensure_dir(&wspace_dot_dir)?;
+		let wspace_toml = r#"
 [model_aliases]
-my_alias = "wks-override-target"
+my_alias = "wspace-override-target"
 "#;
-		fs::write(wks_dot_dir.join("config.toml"), wks_toml)?;
-		let wks_id = WksBmc::get_or_create_by_dir(mm, tmp_wks_dir.as_str(), None).await?;
+		fs::write(wspace_dot_dir.join("config.toml"), wspace_toml)?;
+		let wspace_id = WksBmc::get_or_create_by_dir(mm, tmp_wspace_dir.as_str(), None).await?;
 
-		let wks_resolved = manager.resolve_for_wks(mm, Some(wks_id)).await?;
-		assert_eq!(wks_resolved.get_model("my_alias")?, "wks-override-target");
-		assert_eq!(wks_resolved.get_model("lite")?, "base-lite");
+		let wspace_resolved = manager.resolve_for_wspace(mm, Some(wspace_id)).await?;
+		assert_eq!(wspace_resolved.get_model("my_alias")?, "wspace-override-target");
+		assert_eq!(wspace_resolved.get_model("lite")?, "base-lite");
 
 		// Verify cache hit
-		let wks_resolved_cached = manager.resolve_for_wks(mm, Some(wks_id)).await?;
-		assert_eq!(wks_resolved_cached.get_model("my_alias")?, "wks-override-target");
+		let wspace_resolved_cached = manager.resolve_for_wspace(mm, Some(wspace_id)).await?;
+		assert_eq!(wspace_resolved_cached.get_model("my_alias")?, "wspace-override-target");
 
-		// 3. Unknown wks_id falls back to base config with a warning
+		// 3. Unknown wspace_id falls back to base config with a warning
 		let unknown_id = Id::try_from("11111111-2222-3333-4444-555555555555".to_string())?;
-		let fallback_resolved = manager.resolve_for_wks(mm, Some(unknown_id)).await?;
+		let fallback_resolved = manager.resolve_for_wspace(mm, Some(unknown_id)).await?;
 		assert_eq!(fallback_resolved.get_model("my_alias")?, "base-target");
 
 		let _ = fs::remove_file(&tmp_base_path);
-		let _ = fs::remove_dir_all(&tmp_wks_dir);
+		let _ = fs::remove_dir_all(&tmp_wspace_dir);
 		Ok(())
 	}
 
@@ -409,21 +409,21 @@ flash = "user-flash"
 		assert_eq!(base_config.get_model("$small")?, "gemini-3.5-flash-lite");
 
 		// -- Exec & Check workspace layer on top of base layers
-		let wks_dir = tmp_root.join("wks");
-		let zcoder_dir = wks_dir.join(".zcoder");
+		let wspace_dir = tmp_root.join("wspace");
+		let zcoder_dir = wspace_dir.join(".zcoder");
 		fs::create_dir_all(&zcoder_dir)?;
-		let wks_toml = r#"
+		let wspace_toml = r#"
 [model_aliases]
-flash = "wks-flash"
+flash = "wspace-flash"
 "#;
-		fs::write(zcoder_dir.join("config.toml"), wks_toml)?;
+		fs::write(zcoder_dir.join("config.toml"), wspace_toml)?;
 
-		let wks_config = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+		let wspace_config = manager.resolve_for_wspace_dir(Id::default(), &wspace_dir)?;
 
 		// -- Check
-		assert_eq!(wks_config.get_model("flash")?, "wks-flash");
-		assert_eq!(wks_config.get_model("lite")?, "gemini-3.5-flash-lite");
-		assert_eq!(wks_config.get_model("$small-high")?, "gemini-3.5-flash-lite-high");
+		assert_eq!(wspace_config.get_model("flash")?, "wspace-flash");
+		assert_eq!(wspace_config.get_model("lite")?, "gemini-3.5-flash-lite");
+		assert_eq!(wspace_config.get_model("$small-high")?, "gemini-3.5-flash-lite-high");
 
 		// -- Cleanup
 		let _ = fs::remove_dir_all(&tmp_root);
@@ -432,7 +432,7 @@ flash = "wks-flash"
 	}
 
 	#[test]
-	fn test_config_manager_resolve_for_wks_dir_fresh_picks_up_edits() -> Result<()> {
+	fn test_config_manager_resolve_for_wspace_dir_fresh_picks_up_edits() -> Result<()> {
 		// -- Setup & Fixtures
 		let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
 		let tmp_root = SPath::from_std_path_buf(std::env::temp_dir())?.join(format!("zc_test_fresh_pickup_{nanos}"));
@@ -448,27 +448,30 @@ flash = "default-flash"
 
 		let manager = ConfigManager::from_zbase_dir(&zbase_dir)?;
 
-		let wks_dir = tmp_root.join("wks");
-		let zcoder_dir = wks_dir.join(".zcoder");
+		let wspace_dir = tmp_root.join("wspace");
+		let zcoder_dir = wspace_dir.join(".zcoder");
 		fs::create_dir_all(&zcoder_dir)?;
-		let wks_toml = r#"
+		let wspace_toml = r#"
 [model_aliases]
-flash = "wks-flash"
+flash = "wspace-flash"
 "#;
-		fs::write(zcoder_dir.join("config.toml"), wks_toml)?;
+		fs::write(zcoder_dir.join("config.toml"), wspace_toml)?;
 
 		// -- Exec & Check the workspace layer wins
-		let config_first = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
-		assert_eq!(config_first.get_model("flash")?, "wks-flash");
+		let config_first = manager.resolve_for_wspace_dir(Id::default(), &wspace_dir)?;
+		assert_eq!(config_first.get_model("flash")?, "wspace-flash");
 
 		// -- Edit the user layer on disk without any refresh call and resolve again
-		fs::write(zbase_dir.join("config-user.toml"), "[model_aliases]\nflash = \"user-flash\"\n")?;
-		let config_second = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
-		assert_eq!(config_second.get_model("flash")?, "wks-flash");
+		fs::write(
+			zbase_dir.join("config-user.toml"),
+			"[model_aliases]\nflash = \"user-flash\"\n",
+		)?;
+		let config_second = manager.resolve_for_wspace_dir(Id::default(), &wspace_dir)?;
+		assert_eq!(config_second.get_model("flash")?, "wspace-flash");
 
 		// -- Remove the workspace layer so the fresh user layer wins
 		fs::remove_file(zcoder_dir.join("config.toml"))?;
-		let config_third = manager.resolve_for_wks_dir(Id::default(), &wks_dir)?;
+		let config_third = manager.resolve_for_wspace_dir(Id::default(), &wspace_dir)?;
 		assert_eq!(config_third.get_model("flash")?, "user-flash");
 
 		// -- Cleanup

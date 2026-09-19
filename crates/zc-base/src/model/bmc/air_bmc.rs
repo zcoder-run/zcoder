@@ -29,7 +29,7 @@ impl AirBmc {
 		let db = mm.db();
 		let rel_ids = RelIds {
 			run_id: Some(run_id),
-			wks_id: air_c.wks_id,
+			wspace_id: air_c.wspace_id,
 		};
 
 		let id = db
@@ -72,12 +72,12 @@ impl AirBmc {
 
 	#[allow(unused)]
 	pub async fn update(mm: &ModelManager, id: Id, air_u: AirForUpdate) -> Result<usize> {
-		let (run_id, wks_id) = if let Ok(air) = AirBmc::get(mm, id).await {
-			(Some(air.run_id), air.wks_id)
+		let (run_id, wspace_id) = if let Ok(air) = AirBmc::get(mm, id).await {
+			(Some(air.run_id), air.wspace_id)
 		} else {
 			(None, None)
 		};
-		let rel_ids = RelIds { run_id, wks_id };
+		let rel_ids = RelIds { run_id, wspace_id };
 		let fields = air_u.sqlite_not_none_fields();
 		support::update_with_rel_ids::<Self>(mm, id, fields, rel_ids).await
 	}
@@ -115,7 +115,7 @@ mod tests {
 	fn air_for_create(run_id: Id) -> AirForCreate {
 		AirForCreate {
 			run_id,
-			wks_id: None,
+			wspace_id: None,
 			label: None,
 			model_ov: None,
 			model_upstream: None,
@@ -144,7 +144,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("test prompt".to_string()),
 			answer: Some("test answer".to_string()),
 		};
@@ -175,7 +175,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("multi".to_string()),
 			answer: None,
 		};
@@ -220,7 +220,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("update test".to_string()),
 			answer: None,
 		};
@@ -251,7 +251,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("list test".to_string()),
 			answer: None,
 		};
@@ -275,7 +275,7 @@ mod tests {
 		let run1_id = RunBmc::create(
 			mm,
 			RunForCreate {
-				wks_id: None,
+				wspace_id: None,
 				prompt: Some("run 1".to_string()),
 				answer: None,
 			},
@@ -284,7 +284,7 @@ mod tests {
 		let run2_id = RunBmc::create(
 			mm,
 			RunForCreate {
-				wks_id: None,
+				wspace_id: None,
 				prompt: Some("run 2".to_string()),
 				answer: None,
 			},
@@ -315,7 +315,7 @@ mod tests {
 		let mut bus_rx = get_model_bus().subscribe();
 
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("event test prompt".to_string()),
 			answer: None,
 		};
@@ -323,8 +323,8 @@ mod tests {
 
 		// -- Exec: Create Air
 		let mut air_c = air_for_create(run_id);
-		let test_wks_id = Id::default();
-		air_c.wks_id = Some(test_wks_id);
+		let test_wspace_id = Id::default();
+		air_c.wspace_id = Some(test_wspace_id);
 		let air_id = AirBmc::create_next(mm, run_id, air_c).await?;
 
 		// -- Check: Create Event
@@ -338,7 +338,7 @@ mod tests {
 		assert_eq!(event.action, EntityAction::Created);
 		assert_eq!(event.id, Some(air_id));
 		assert_eq!(event.rel_ids.run_id, Some(run_id));
-		assert_eq!(event.rel_ids.wks_id, Some(test_wks_id));
+		assert_eq!(event.rel_ids.wspace_id, Some(test_wspace_id));
 
 		// -- Exec: Update Air
 		let update = AirForUpdate {
@@ -358,7 +358,7 @@ mod tests {
 		assert_eq!(event.action, EntityAction::Updated);
 		assert_eq!(event.id, Some(air_id));
 		assert_eq!(event.rel_ids.run_id, Some(run_id));
-		assert_eq!(event.rel_ids.wks_id, Some(test_wks_id));
+		assert_eq!(event.rel_ids.wspace_id, Some(test_wspace_id));
 
 		Ok(())
 	}

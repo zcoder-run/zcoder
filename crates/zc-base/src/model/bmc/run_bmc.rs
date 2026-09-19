@@ -17,7 +17,7 @@ impl RunBmc {
 	pub async fn create(mm: &ModelManager, run_c: RunForCreate) -> Result<Id> {
 		let rel_ids = RelIds {
 			run_id: None,
-			wks_id: run_c.wks_id,
+			wspace_id: run_c.wspace_id,
 		};
 		let fields = run_c.sqlite_not_none_fields();
 		support::create_with_rel_ids::<Self>(mm, fields, rel_ids).await
@@ -25,12 +25,15 @@ impl RunBmc {
 
 	#[allow(unused)]
 	pub async fn update(mm: &ModelManager, id: Id, run_u: RunForUpdate) -> Result<usize> {
-		let wks_id = if let Some(wks_id) = run_u.wks_id {
-			Some(wks_id)
+		let wspace_id = if let Some(wspace_id) = run_u.wspace_id {
+			Some(wspace_id)
 		} else {
-			RunBmc::get(mm, id).await.ok().and_then(|r| r.wks_id)
+			RunBmc::get(mm, id).await.ok().and_then(|r| r.wspace_id)
 		};
-		let rel_ids = RelIds { run_id: None, wks_id };
+		let rel_ids = RelIds {
+			run_id: None,
+			wspace_id,
+		};
 		let fields = run_u.sqlite_not_none_fields();
 		support::update_with_rel_ids::<Self>(mm, id, fields, rel_ids).await
 	}
@@ -72,7 +75,7 @@ mod tests {
 		// -- Fixture
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("Why is shy red?".to_string()),
 			answer: Some("Because not happy.".to_string()),
 		};
@@ -92,7 +95,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("compute task".to_string()),
 			answer: None,
 		};
@@ -123,7 +126,7 @@ mod tests {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let run_c = RunForCreate {
-			wks_id: None,
+			wspace_id: None,
 			prompt: Some("cost aggregate test".to_string()),
 			answer: None,
 		};
@@ -131,7 +134,7 @@ mod tests {
 
 		let air1 = crate::model::AirForCreate {
 			run_id,
-			wks_id: None,
+			wspace_id: None,
 			cost: Some(0.0125),
 			label: None,
 			model_ov: None,
@@ -172,14 +175,14 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_model_run_bmc_wks_id_and_rel_ids() -> Result<()> {
+	async fn test_model_run_bmc_wspace_id_and_rel_ids() -> Result<()> {
 		// -- Setup & Fixtures
 		let mm = get_model_manager()?;
 		let mut bus_rx = crate::model::get_model_bus().subscribe();
-		let test_wks_id = Id::default();
+		let test_wspace_id = Id::default();
 		let run_c = RunForCreate {
-			wks_id: Some(test_wks_id),
-			prompt: Some("wks test".to_string()),
+			wspace_id: Some(test_wspace_id),
+			prompt: Some("wspace test".to_string()),
 			answer: None,
 		};
 
@@ -188,7 +191,7 @@ mod tests {
 
 		// -- Check
 		let run = RunBmc::get(mm, run_id).await?;
-		assert_eq!(run.wks_id, Some(test_wks_id));
+		assert_eq!(run.wspace_id, Some(test_wspace_id));
 
 		let event = loop {
 			let evt = bus_rx.recv().await?;
@@ -196,7 +199,7 @@ mod tests {
 				break evt;
 			}
 		};
-		assert_eq!(event.rel_ids.wks_id, Some(test_wks_id));
+		assert_eq!(event.rel_ids.wspace_id, Some(test_wspace_id));
 
 		Ok(())
 	}

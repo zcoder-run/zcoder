@@ -9,14 +9,14 @@ impl WksResolver for BaseWksResolver {
 	fn resolve<'a>(&'a self, info: &'a ClientInfo) -> BoxFuture<'a, zc_router::Result<Id>> {
 		Box::pin(async move {
 			let mm = get_model_manager().map_err(|e| zc_router::Error::custom(e.to_string()))?;
-			let id = WksBmc::get_or_create_by_dir(mm, &info.wks_dir, info.label.clone())
+			let id = WksBmc::get_or_create_by_dir(mm, &info.wspace_dir, info.label.clone())
 				.await
 				.map_err(|e| zc_router::Error::custom(e.to_string()))?;
 
 			// -- Materialize the workspace `.zcoder/` assets on connect, so a missing
-			//    `.zcoder/config.toml` is seeded from the bundled `wks/config.toml`.
-			if let Err(err) = zc_asset::update_wks_dir(&info.wks_dir) {
-				tracing::warn!("->> failed to sync workspace assets for {}: {err}", info.wks_dir);
+			//    `.zcoder/config.toml` is seeded from the bundled `wspace/config.toml`.
+			if let Err(err) = zc_asset::update_wspace_dir(&info.wspace_dir) {
+				tracing::warn!("->> failed to sync workspace assets for {}: {err}", info.wspace_dir);
 			}
 
 			Ok(id)
@@ -33,9 +33,9 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
-	async fn test_base_wks_resolver_resolves_dir() -> Result<()> {
+	async fn test_base_wspace_resolver_resolves_dir() -> Result<()> {
 		let resolver = BaseWksResolver;
-		let info = ClientInfo::from_wks_dir("/tmp/zc-test-base-wks-resolver");
+		let info = ClientInfo::from_wspace_dir("/tmp/zc-test-base-wspace-resolver");
 		let id1 = resolver.resolve(&info).await?;
 		let id2 = resolver.resolve(&info).await?;
 		assert_eq!(id1, id2);
@@ -43,15 +43,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_base_wks_resolver_materializes_wks_config() -> Result<()> {
+	async fn test_base_wspace_resolver_materializes_wspace_config() -> Result<()> {
 		// -- Setup & Fixtures
-		let wks_dir = std::env::temp_dir().join(format!("zc-test-base-wks-resolver-assets-{}", std::process::id()));
-		let wks_dir_str = wks_dir.to_string_lossy().to_string();
-		let config_path = wks_dir.join(".zcoder").join("config.toml");
-		let _ = std::fs::remove_dir_all(&wks_dir);
+		let wspace_dir =
+			std::env::temp_dir().join(format!("zc-test-base-wspace-resolver-assets-{}", std::process::id()));
+		let wspace_dir_str = wspace_dir.to_string_lossy().to_string();
+		let config_path = wspace_dir.join(".zcoder").join("config.toml");
+		let _ = std::fs::remove_dir_all(&wspace_dir);
 
 		let resolver = BaseWksResolver;
-		let info = ClientInfo::from_wks_dir(wks_dir_str.as_str());
+		let info = ClientInfo::from_wspace_dir(wspace_dir_str.as_str());
 
 		// -- Exec
 		resolver.resolve(&info).await?;
@@ -63,7 +64,7 @@ mod tests {
 		);
 
 		// -- Clean
-		let _ = std::fs::remove_dir_all(&wks_dir);
+		let _ = std::fs::remove_dir_all(&wspace_dir);
 		Ok(())
 	}
 }

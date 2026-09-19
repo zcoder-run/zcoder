@@ -14,7 +14,7 @@ use zc_core::model::Id;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterMsg {
 	pub msg_id: MsgId,
-	pub wks_id: Id,
+	pub wspace_id: Id,
 	pub data: RouterMsgData,
 }
 
@@ -40,12 +40,12 @@ pub enum RouterMsgData {
 static NEXT_MSG_ID: AtomicU64 = AtomicU64::new(1);
 
 impl RouterMsg {
-	/// Creates a message with a fresh [`MsgId`] and the single-workspace stub `wks_id`.
+	/// Creates a message with a fresh [`MsgId`] and the single-workspace stub `wspace_id`.
 	pub fn new(data: RouterMsgData) -> Self {
 		let msg_id = MsgId::new(NEXT_MSG_ID.fetch_add(1, Ordering::Relaxed));
 		Self {
 			msg_id,
-			wks_id: Id::default(),
+			wspace_id: Id::default(),
 			data,
 		}
 	}
@@ -80,7 +80,7 @@ mod tests {
 		// -- Exec
 		let msg = RouterMsg {
 			msg_id: MsgId::new(7),
-			wks_id: Id::default(),
+			wspace_id: Id::default(),
 			data: RouterMsgData::Exec(ExecCmd::RunPrompt("hello".to_string())),
 		};
 
@@ -95,7 +95,7 @@ mod tests {
 	fn test_msg_router_msg_serde_roundtrip() -> Result<()> {
 		let msg = RouterMsg {
 			msg_id: MsgId::new(42),
-			wks_id: Id::default(),
+			wspace_id: Id::default(),
 			data: RouterMsgData::ModelRpcReq(ModelRpcReq::DbSize),
 		};
 		let json = serde_json::to_string(&msg)?;
@@ -110,14 +110,14 @@ mod tests {
 		// -- Attach
 		let attach = RouterMsg {
 			msg_id: MsgId::new(1),
-			wks_id: Id::default(),
-			data: RouterMsgData::Attach(ClientInfo::from_wks_dir("/home/dev/zcoder")),
+			wspace_id: Id::default(),
+			data: RouterMsgData::Attach(ClientInfo::from_wspace_dir("/home/dev/zcoder")),
 		};
 		let json = serde_json::to_string(&attach)?;
 		let back: RouterMsg = serde_json::from_str(&json)?;
 		match back.data {
 			RouterMsgData::Attach(info) => {
-				assert_eq!(info.wks_dir, "/home/dev/zcoder");
+				assert_eq!(info.wspace_dir, "/home/dev/zcoder");
 				assert_eq!(info.label.as_deref(), Some("dev/zcoder"));
 			}
 			_ => panic!("unexpected deserialized variant"),

@@ -3,8 +3,7 @@
 // region:    --- Modules
 
 use crate::consts::{
-	CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME,
-	ZCODER_BASE_DIR_ENV,
+	CONFIG_DIR_NAME, DEBUG_LOG_DIR_NAME, DEBUG_LOG_FILE_NAME, WKS_MARKER_DIR_NAME, ZBASE_DIR_NAME, ZCODER_BASE_DIR_ENV,
 };
 use crate::{Error, Result};
 use simple_fs::SPath;
@@ -27,9 +26,9 @@ pub fn zbase_dir() -> Result<SPath> {
 			let home = home_dir().ok_or_else(|| Error::custom("HOME environment variable is not set"))?;
 			Ok(zbase_dir_from_home(&home))
 		}
-		Err(std::env::VarError::NotUnicode(_)) => {
-			Err(Error::custom(format!("{ZCODER_BASE_DIR_ENV} environment variable is not valid Unicode")))
-		}
+		Err(std::env::VarError::NotUnicode(_)) => Err(Error::custom(format!(
+			"{ZCODER_BASE_DIR_ENV} environment variable is not valid Unicode"
+		))),
 	}
 }
 
@@ -39,7 +38,7 @@ pub fn zbase_log_file() -> Result<SPath> {
 }
 
 /// Walks up from `from` and returns the first directory that contains a `.zcoder/` marker.
-pub fn find_wks_dir(from: &SPath) -> Option<SPath> {
+pub fn find_wspace_dir(from: &SPath) -> Option<SPath> {
 	let mut current = Some(from.clone());
 	while let Some(dir) = current {
 		if dir.join(WKS_MARKER_DIR_NAME).is_dir() {
@@ -50,9 +49,9 @@ pub fn find_wks_dir(from: &SPath) -> Option<SPath> {
 	None
 }
 
-/// Returns the workspace log file, `<wks_dir>/.zcoder/debug-log/log.txt`.
-pub fn wks_log_file(wks_dir: &SPath) -> SPath {
-	wks_dir
+/// Returns the workspace log file, `<wspace_dir>/.zcoder/debug-log/log.txt`.
+pub fn wspace_log_file(wspace_dir: &SPath) -> SPath {
+	wspace_dir
 		.join(WKS_MARKER_DIR_NAME)
 		.join(DEBUG_LOG_DIR_NAME)
 		.join(DEBUG_LOG_FILE_NAME)
@@ -95,17 +94,17 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dirs_find_wks_dir_found() -> Result<()> {
+	fn test_dirs_find_wspace_dir_found() -> Result<()> {
 		// -- Setup & Fixtures
 		let root = new_test_root("found")?;
-		let wks_dir = root.join("proj");
-		fs::create_dir_all(wks_dir.join(WKS_MARKER_DIR_NAME))?;
+		let wspace_dir = root.join("proj");
+		fs::create_dir_all(wspace_dir.join(WKS_MARKER_DIR_NAME))?;
 
 		// -- Exec
-		let found = find_wks_dir(&wks_dir);
+		let found = find_wspace_dir(&wspace_dir);
 
 		// -- Check
-		assert_eq!(found, Some(wks_dir.clone()));
+		assert_eq!(found, Some(wspace_dir.clone()));
 
 		// -- Cleanup
 		fs::remove_dir_all(&root)?;
@@ -114,14 +113,14 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dirs_find_wks_dir_not_found() -> Result<()> {
+	fn test_dirs_find_wspace_dir_not_found() -> Result<()> {
 		// -- Setup & Fixtures
 		let root = new_test_root("not-found")?;
 		let nested = root.join("plain").join("nested");
 		fs::create_dir_all(&nested)?;
 
 		// -- Exec
-		let found = find_wks_dir(&nested);
+		let found = find_wspace_dir(&nested);
 
 		// -- Check
 		assert_eq!(found, None);
@@ -133,19 +132,19 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dirs_find_wks_dir_nested_start() -> Result<()> {
+	fn test_dirs_find_wspace_dir_nested_start() -> Result<()> {
 		// -- Setup & Fixtures
 		let root = new_test_root("nested")?;
-		let wks_dir = root.join("proj");
-		fs::create_dir_all(wks_dir.join(WKS_MARKER_DIR_NAME))?;
-		let nested_start = wks_dir.join("src").join("deep");
+		let wspace_dir = root.join("proj");
+		fs::create_dir_all(wspace_dir.join(WKS_MARKER_DIR_NAME))?;
+		let nested_start = wspace_dir.join("src").join("deep");
 		fs::create_dir_all(&nested_start)?;
 
 		// -- Exec
-		let found = find_wks_dir(&nested_start);
+		let found = find_wspace_dir(&nested_start);
 
 		// -- Check
-		assert_eq!(found, Some(wks_dir.clone()));
+		assert_eq!(found, Some(wspace_dir.clone()));
 
 		// -- Cleanup
 		fs::remove_dir_all(&root)?;
@@ -154,12 +153,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dirs_wks_log_file() -> Result<()> {
+	fn test_dirs_wspace_log_file() -> Result<()> {
 		// -- Setup & Fixtures
-		let wks_dir = SPath::from("/home/dev/proj");
+		let wspace_dir = SPath::from("/home/dev/proj");
 
 		// -- Exec
-		let log_file = wks_log_file(&wks_dir);
+		let log_file = wspace_log_file(&wspace_dir);
 
 		// -- Check
 		assert_eq!(log_file.as_str(), "/home/dev/proj/.zcoder/debug-log/log.txt");

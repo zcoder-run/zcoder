@@ -22,7 +22,7 @@ crates/zc-base/src/
   model_change.rs  # Core model change pump loop
   model_rpc.rs     # model RPC handler
   prompts/         # system prompt composition
-  wks_resolver.rs  # BaseWksResolver implementing zc_router::WksResolver
+  wspace_resolver.rs  # BaseWksResolver implementing zc_router::WksResolver
 ```
 
 `lib.rs` registers the crate surface and re-exports the configuration and database handles:
@@ -37,13 +37,13 @@ pub mod model;
 mod model_change;
 mod model_rpc;
 mod prompts;
-mod wks_resolver;
+mod wspace_resolver;
 
 // endregion: --- Modules
 
 pub use config::{Config, ConfigManager};
 pub use model::Db;
-pub use wks_resolver::BaseWksResolver;
+pub use wspace_resolver::BaseWksResolver;
 ```
 
 ## Configuration
@@ -62,11 +62,11 @@ pub use wks_resolver::BaseWksResolver;
 - The default config defines `[workspace] working_dir`, `[maestro] model`, `[model_sizes]`, and `[model_aliases]`.
 
 - The effective configuration has three tiers, from highest to lowest precedence:
-  - `<wks_dir>/.zcoder/config.toml` (workspace config)
+  - `<wspace_dir>/.zcoder/config.toml` (workspace config)
   - `<zbase_dir>/config-user.toml` (user base config)
   - `<zbase_dir>/config-default.toml` (default base config)
 
-- For workspace-specific operations, `ConfigManager::resolve_for_wks` resolves the workspace directory from `wks_id` through `WksBmc` and delegates to `resolve_for_wks_dir`.
+- For workspace-specific operations, `ConfigManager::resolve_for_wspace` resolves the workspace directory from `wspace_id` through `WksBmc` and delegates to `resolve_for_wspace_dir`.
   - Object fields merge recursively.
   - Scalar and array values replace wholesale.
   - Layers whose files are absent are skipped.
@@ -82,7 +82,7 @@ pub use wks_resolver::BaseWksResolver;
 
 - The `RunBmc`, `AirBmc`, and `WksBmc` accessors and their `DbBmc` impls live here. The entity structs and their derives stay in `zc-core`; the accessors and the SQL live here.
 
-- The `wks` table persists attached workspace directories:
+- The `wspace` table persists attached workspace directories:
   - Columns: `id` BLOB PRIMARY KEY, `dir` TEXT UNIQUE NOT NULL, `label` TEXT, `ctime` INTEGER, `mtime` INTEGER.
   - `WksBmc::get_or_create_by_dir(mm, dir, label)` canonicalizes directory paths and provides authoritative workspace identity.
 
@@ -98,11 +98,11 @@ pub use wks_resolver::BaseWksResolver;
 
 - `exec/` owns `Executor`, `ExecutorConfig`, the provider call helper `exec_air_chat`, the `prep_air_*` helpers, and the exec error.
 
-- `Executor::new(config)` creates the command and event channels, syncs the workspace assets with `update_wks_dir` and the base assets with `update_zbase_assets`, builds the config manager with `ConfigManager::from_zbase_dir`, builds the AIPROG registry and script engine, composes the system prompt, and builds the base `ChatRequest`.
+- `Executor::new(config)` creates the command and event channels, syncs the workspace assets with `update_wspace_dir` and the base assets with `update_zbase_assets`, builds the config manager with `ConfigManager::from_zbase_dir`, builds the AIPROG registry and script engine, composes the system prompt, and builds the base `ChatRequest`.
 
 - `Executor::start()` consumes `ExecCmd` values until the command channel closes.
 
-- `ExecutorConfig` carries `wks_dir`, an optional `base_dir`, an optional `zbase_dir` (defaulting to `zc_common::dirs::zbase_dir()`), and an optional explicit `model`.
+- `ExecutorConfig` carries `wspace_dir`, an optional `base_dir`, an optional `zbase_dir` (defaulting to `zc_common::dirs::zbase_dir()`), and an optional explicit `model`.
 
 - The executor imports the contract types (`ExecCmd`, `ExecEvent`, and the channel aliases) from `zc_core::exec` and the model layer from `crate::model`.
 
@@ -126,7 +126,7 @@ The `RunPrompt` path spans the TUI, the router, the executor, and the model laye
 
 3. Workspace assets are re-synced, and the effective three-tier configuration is recomputed fresh from disk for that run, so on-disk edits apply immediately.
 
-4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from the workspace's canonical directory `wks.dir` via `wks_id`.
+4. The model is resolved from the explicit model, or from `[maestro] model` through `get_model`, and the base directory is resolved from the workspace's canonical directory `wspace.dir` via `wspace_id`.
 
 5. The user prompt is appended to the base chat request, and `exec_air_chat` performs the provider call while recording an `Air` row with timing, tokens, and cost.
 
@@ -163,11 +163,11 @@ The `zc base` command runs the base as a machine-wide standalone daemon process:
 
 ## Startup and Lifecycle
 
-- `ZcBaseConfig` carries `wks_dir`, an optional `base_dir`, and an optional explicit `model`, and converts into `ExecutorConfig`.
+- `ZcBaseConfig` carries `wspace_dir`, an optional `base_dir`, and an optional explicit `model`, and converts into `ExecutorConfig`.
 
 - `start_base_core(config)` starts Core initialization and the router dispatch loop: it creates the executor and spawns `executor.start()`, starts the model RPC handler, creates the router message channel, and spawns `run_router`.
 
-- `start_base_parts(config)` decomposes base initialization into `BaseParts` (`exec_cmd_tx`, `model_rpc_cmd_tx`, `wks_resolver`, `model_change_rx`, `exec_event_rx`), used by `RouterServer` to host the socket listener.
+- `start_base_parts(config)` decomposes base initialization into `BaseParts` (`exec_cmd_tx`, `model_rpc_cmd_tx`, `wspace_resolver`, `model_change_rx`, `exec_event_rx`), used by `RouterServer` to host the socket listener.
 
 - `InProcBase` is retained as an in-process testing harness and fallback mechanism.
 

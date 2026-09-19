@@ -23,7 +23,7 @@ crates/zc-router/src/
   router.rs       # run_router and route
   server.rs       # RouterServer, ConnWatch, and connection registry (server feature)
   transport/      # socket_path policy, wire framing, client_conn
-  wks_resolver.rs # WksResolver trait for workspace identity
+  wspace_resolver.rs # WksResolver trait for workspace identity
 ```
 
 `lib.rs` registers and re-exports the modules:
@@ -47,7 +47,7 @@ pub mod router;
 #[cfg(feature = "server")]
 pub mod server;
 pub mod transport;
-pub mod wks_resolver;
+pub mod wspace_resolver;
 
 pub use client::RouterClient;
 pub use client_filter::client_filter;
@@ -65,7 +65,7 @@ pub use msg::{RouterMsg, RouterMsgData, RouterMsgRx, RouterMsgTx, new_router_msg
 pub use router::{route, run_router};
 #[cfg(feature = "server")]
 pub use server::{ConnWatch, RouterServer};
-pub use wks_resolver::WksResolver;
+pub use wspace_resolver::WksResolver;
 
 // endregion: --- Modules
 ```
@@ -77,7 +77,7 @@ pub use wks_resolver::WksResolver;
 ```rust
 pub struct RouterMsg {
 	pub msg_id: MsgId,
-	pub wks_id: Id,
+	pub wspace_id: Id,
 	pub data: RouterMsgData,
 }
 
@@ -95,7 +95,7 @@ pub enum RouterMsgData {
 
 - `msg_id` is a monotonic `MsgId` from the process-local source in `msg.rs`, so a message can be correlated without a shared clock.
 
-- `wks_id` identifies the workspace the message belongs to, assigned by the server at attach time and stamped onto outgoing messages by `RouterClient::send`.
+- `wspace_id` identifies the workspace the message belongs to, assigned by the server at attach time and stamped onto outgoing messages by `RouterClient::send`.
 
 - `RouterMsgData` is intentionally a mixed envelope: it carries commands toward Core and notifications coming back from it.
 
@@ -117,7 +117,7 @@ impl RouterClient {
 	pub fn take_exec_event_rx(&self) -> Option<ExecEventRx>;
 	pub fn register_pending(&self, msg_id: MsgId, res_tx: OnceTx<ModelRpcReply>);
 	pub fn complete_pending(&self, msg_id: MsgId, reply: ModelRpcReply);
-	pub fn wks_id(&self) -> Option<Id>;
+	pub fn wspace_id(&self) -> Option<Id>;
 }
 ```
 
@@ -127,9 +127,9 @@ impl RouterClient {
 
 - When initialized over UDS via `RouterClient::uds`, the client executes an inline attach handshake before starting the reader task:
   1. Sends `RouterMsgData::Attach(client_info)`.
-  2. Awaits `RouterMsgData::AttachOk(wks_id)` or `RouterMsgData::AttachErr(err)`.
-  3. On success, records `wks_id` in internal client state.
-  4. In `send(msg)`, automatically stamps `wks_id` onto outgoing messages if `msg.wks_id == Id::default()`.
+  2. Awaits `RouterMsgData::AttachOk(wspace_id)` or `RouterMsgData::AttachErr(err)`.
+  3. On success, records `wspace_id` in internal client state.
+  4. In `send(msg)`, automatically stamps `wspace_id` onto outgoing messages if `msg.wspace_id == Id::default()`.
 
 - The `client` and `server` cargo features isolate the client implementation from server listeners.
 
@@ -137,15 +137,15 @@ impl RouterClient {
 
 `server.rs` provides `RouterServer` for accepting inbound client connections over a Unix Domain Socket:
 
-- **Initialization**: `RouterServer::bind(socket_path, exec_cmd_tx, model_rpc_cmd_tx, wks_resolver, model_change_rx, exec_event_rx)` verifies that no live server is running, unlinks stale socket files, and binds the socket.
+- **Initialization**: `RouterServer::bind(socket_path, exec_cmd_tx, model_rpc_cmd_tx, wspace_resolver, model_change_rx, exec_event_rx)` verifies that no live server is running, unlinks stale socket files, and binds the socket.
 - **Per-Connection Handling**: Each client connection spawns an independent task:
   - Wraps split read and write stream halves with `WireReader` and `WireWriter`.
-  - Performs the initial attach exchange: reads `Attach(client_info)`, queries `WksResolver::resolve(&client_info)`, and replies with `AttachOk(wks_id)`.
+  - Performs the initial attach exchange: reads `Attach(client_info)`, queries `WksResolver::resolve(&client_info)`, and replies with `AttachOk(wspace_id)`.
   - Spawns a dedicated single-writer task draining a bounded per-connection response channel to prevent interleaved frame writes.
   - Dispatches regular messages to the shared `route` function.
 - **Connection Registry and Fan-Out**:
-  - Base-originated `ModelChangeEvent` and `ExecEvent` notifications fan out to all attached clients that pass `client_filter(client_wks_id, msg)`.
-  - `client_filter` passes events whose `msg.wks_id` matches the client's `wks_id`, as well as unscoped events carrying default `wks_id`.
+  - Base-originated `ModelChangeEvent` and `ExecEvent` notifications fan out to all attached clients that pass `client_filter(client_wspace_id, msg)`.
+  - `client_filter` passes events whose `msg.wspace_id` matches the client's `wspace_id`, as well as unscoped events carrying default `wspace_id`.
 - **ConnWatch**: Exposes connection tracking (`wait_for_zero`, `wait_for_nonzero`, `count`) allowing the hosting server process to manage idle shutdown grace periods.
 
 ## The Router Loop
@@ -162,7 +162,7 @@ pub async fn run_router(
 
 `route` dispatches one message:
 
-- `RouterMsgData::Exec(cmd)` wraps `cmd` with `msg.wks_id` into `ExecReq` and forwards to the executor command channel.
+- `RouterMsgData::Exec(cmd)` wraps `cmd` with `msg.wspace_id` into `ExecReq` and forwards to the executor command channel.
 
 - `RouterMsgData::ModelRpcReq(req)` converts into a local `ModelRpcCmd` with a local reply handle and forwards to the `ModelRpcCmd` channel. When the reply resolves, it completes the correlated pending response.
 
@@ -170,7 +170,7 @@ pub async fn run_router(
 
 - `RouterMsgData::ModelChange(event)` and `RouterMsgData::ExecEvent(event)` are logged at the router boundary.
 
-Each route helper logs through `tracing::debug!` with the `->>` prefix and the `msg_id`/`wks_id` context.
+Each route helper logs through `tracing::debug!` with the `->>` prefix and the `msg_id`/`wspace_id` context.
 
 ## Model RPC Contract
 
