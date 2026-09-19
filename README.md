@@ -2,7 +2,6 @@
 
 See [zcoder.run](https://zcoder.run)
 
-
 ## License
 
 Licensed under either of:
@@ -12,7 +11,7 @@ Licensed under either of:
 
 at your option.
 
-Copyright (c) 2026 BriteSnow, Inc.
+Copyright (c) 2026 BriteSnow, Inc. - https://britesnow.com
 
 ---
 
