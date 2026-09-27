@@ -12,5 +12,5 @@ working_dir = "./"   # When relative, relative to cwd of the project_dir
 # big       = "sol"
 
 [model_aliases]
-# -- my custom aliases
-# lite          = "gemini-3.5-flash-lite"
+# -- custom aliases
+# my-lite   = "gemini-3.5-flash-lite"
