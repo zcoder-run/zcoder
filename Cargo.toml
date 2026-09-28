@@ -1,6 +1,6 @@
 [package]
 name = "zcoder"
-version = "0.0.3-WIP"
+version = "0.0.3"
 description = "AI coding CLI — very early stage"
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -59,28 +59,28 @@ derive_more = { workspace = true }
 
 [workspace.dependencies]
 # -- Sub Crates
-zc-asset = { version = "0.0.2", path = "crates/zc-asset" }
-zc-base = { version = "0.0.2", path = "crates/zc-base" }
-zc-core = { version = "0.0.2", path = "crates/zc-core" }
-zc-common = { version = "0.0.2", path = "crates/zc-common" }
-zc-router = { version = "0.0.2", path = "crates/zc-router", default-features = false }
-zc-tui = { version = "0.0.2", path = "crates/zc-tui" }
+zc-asset = { version = "0.0.3", path = "crates/zc-asset" }
+zc-base = { version = "0.0.3", path = "crates/zc-base" }
+zc-core = { version = "0.0.3", path = "crates/zc-core" }
+zc-common = { version = "0.0.3", path = "crates/zc-common" }
+zc-router = { version = "0.0.3", path = "crates/zc-router", default-features = false }
+zc-tui = { version = "0.0.3", path = "crates/zc-tui" }
 # -- AI
 genai = { version = "0.7.0-rc" }
 aicost = { version = "0.2" }
 udiffx = { version = "0.3", features = ["prompt"]}
 # https://github.com/zcoder-run/rust-aiprog.git
-aiprog = { git = "https://github.com/zcoder-run/rust-aiprog.git" }
+aiprog = { version = "0.0.5" }
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3.31"
-futures-util = "0.3"
+futures-util = { version = "0.3", features = ["sink"] }
 crossfire = "3.1.12"
 # -- Concurrency
 arc-swap = "1.7"
 # -- Serde & Content Formats
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 postcard = { version = "1", features = ["use-std"] }
 serde_json = "1"
 value-ext = "0.1.2"

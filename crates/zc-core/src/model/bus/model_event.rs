@@ -20,7 +20,6 @@ impl ModelChangeEvent {
 	}
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelEventData {
 	pub entity: EntityType,

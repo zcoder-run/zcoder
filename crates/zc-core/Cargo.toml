@@ -1,6 +1,6 @@
 [package]
 name = "zc-core"
-version = "0.0.2"
+version = "0.0.3"
 description = "Core data types and event contracts for zcoder"
 edition = "2024"
 license = "MIT OR Apache-2.0"

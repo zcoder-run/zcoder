@@ -1,6 +1,6 @@
 [package]
 name = "zc-router"
-version = "0.0.2"
+version = "0.0.3"
 description = "Core messaging contract and routing for zcoder"
 edition = "2024"
 license = "MIT OR Apache-2.0"
