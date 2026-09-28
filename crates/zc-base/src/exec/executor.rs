@@ -228,10 +228,18 @@ impl ExecutorInner {
 			let (aiprog_scripts, mut answer) = extract_aiprog_scripts(&raw_answer);
 
 			for lua_script in aiprog_scripts {
+				// -- Creating the RunningContext
 				let mut running_context = aiprog::RunningContext::default();
+				// DirContext
 				if let Ok(dir_ctx) = create_dir_context(&base_dir) {
 					running_context.insert(dir_ctx);
 				}
+				// AiContext
+				running_context.insert(
+					aiprog::AiContext::default()
+						.with_genai_client(genai_client.clone())
+						.with_default_model(resolved_model.clone()),
+				);
 
 				let script_engine_clone = script_engine.clone();
 				let outcome_result: core::result::Result<String, String> =
