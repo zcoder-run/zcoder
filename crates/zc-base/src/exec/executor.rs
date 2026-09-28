@@ -241,7 +241,7 @@ impl ExecutorInner {
 						.with_default_model(resolved_model.clone()),
 				);
 
-				let outcome_text = run_lua_script(script_engine.clone(), lua_script, running_context).await?;
+				let outcome_text = run_lua_script(&script_engine, &lua_script, running_context).await?;
 
 				if !answer.trim().is_empty() {
 					answer.push_str("\n\n");
@@ -299,29 +299,20 @@ impl ExecutorInner {
 
 /// Runs an aiprog Lua script and returns the formatted outcome text.
 ///
-/// The `ScriptEngine::exec` future holds `mlua` state (`Rc` based) across await points,
-/// so it is `!Send` and cannot be awaited inside a `tokio::spawn` task. It is driven on a
-/// blocking thread by a private current-thread runtime; only `Send` values cross the boundary.
+/// The `ScriptEngine::exec` future is `Send` (aiprog enables the `mlua` `send` feature),
+/// so it is awaited directly from the calling `tokio::spawn` task, with no blocking call.
 /// Engine failures return `Err`, while script errors are formatted into the returned text.
 async fn run_lua_script(
-	script_engine: aiprog::ScriptEngine,
-	lua_script: String,
+	script_engine: &aiprog::ScriptEngine,
+	lua_script: &str,
 	running_context: aiprog::RunningContext,
 ) -> Result<String> {
-	tokio::task::spawn_blocking(move || -> Result<String> {
-		let rt = tokio::runtime::Builder::new_current_thread()
-			.enable_all()
-			.build()
-			.map_err(|e| Error::custom(format!("Failed to create tokio runtime for Lua: {e}")))?;
-		let outcome = rt.block_on(script_engine.exec(&lua_script, running_context))?;
-		let text = match outcome.result {
-			Ok(val) => format_lua_outcome_value(val),
-			Err(err) => format_lua_outcome_error(&err),
-		};
-		Ok(text)
-	})
-	.await
-	.map_err(|e| Error::custom(format!("Lua execution join error: {e}")))?
+	let outcome = script_engine.exec(lua_script, running_context).await?;
+	let text = match outcome.result {
+		Ok(val) => format_lua_outcome_value(val),
+		Err(err) => format_lua_outcome_error(&err),
+	};
+	Ok(text)
 }
 
 fn create_dir_context(base_dir: &SPath) -> Result<aiprog::DirContext> {
