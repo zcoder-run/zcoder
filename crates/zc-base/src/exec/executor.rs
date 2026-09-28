@@ -241,38 +241,12 @@ impl ExecutorInner {
 						.with_default_model(resolved_model.clone()),
 				);
 
-				let script_engine_clone = script_engine.clone();
-				let outcome_result: core::result::Result<String, String> =
-					tokio::task::spawn_blocking(move || -> Result<core::result::Result<String, String>> {
-						let rt = tokio::runtime::Builder::new_current_thread()
-							.enable_all()
-							.build()
-							.map_err(|e| Error::custom(format!("Failed to create tokio runtime for Lua: {e}")))?;
-						let outcome = rt
-							.block_on(script_engine_clone.exec(&lua_script, running_context))
-							.map_err(Error::from)?;
-						Ok(outcome
-							.result
-							.map(format_lua_outcome_value)
-							.map_err(|err| format_lua_outcome_error(&err)))
-					})
-					.await
-					.map_err(|e| Error::custom(format!("Lua execution join error: {e}")))??;
+				let outcome_text = run_lua_script(script_engine.clone(), lua_script, running_context).await?;
 
-				match outcome_result {
-					Ok(val_str) => {
-						if !answer.trim().is_empty() {
-							answer.push_str("\n\n");
-						}
-						answer.push_str(&val_str);
-					}
-					Err(err_str) => {
-						if !answer.trim().is_empty() {
-							answer.push_str("\n\n");
-						}
-						answer.push_str(&err_str);
-					}
+				if !answer.trim().is_empty() {
+					answer.push_str("\n\n");
 				}
+				answer.push_str(&outcome_text);
 			}
 
 			// -- Store response
@@ -322,6 +296,33 @@ impl ExecutorInner {
 }
 
 // region:    --- Support
+
+/// Runs an aiprog Lua script and returns the formatted outcome text.
+///
+/// The `ScriptEngine::exec` future holds `mlua` state (`Rc` based) across await points,
+/// so it is `!Send` and cannot be awaited inside a `tokio::spawn` task. It is driven on a
+/// blocking thread by a private current-thread runtime; only `Send` values cross the boundary.
+/// Engine failures return `Err`, while script errors are formatted into the returned text.
+async fn run_lua_script(
+	script_engine: aiprog::ScriptEngine,
+	lua_script: String,
+	running_context: aiprog::RunningContext,
+) -> Result<String> {
+	tokio::task::spawn_blocking(move || -> Result<String> {
+		let rt = tokio::runtime::Builder::new_current_thread()
+			.enable_all()
+			.build()
+			.map_err(|e| Error::custom(format!("Failed to create tokio runtime for Lua: {e}")))?;
+		let outcome = rt.block_on(script_engine.exec(&lua_script, running_context))?;
+		let text = match outcome.result {
+			Ok(val) => format_lua_outcome_value(val),
+			Err(err) => format_lua_outcome_error(&err),
+		};
+		Ok(text)
+	})
+	.await
+	.map_err(|e| Error::custom(format!("Lua execution join error: {e}")))?
+}
 
 fn create_dir_context(base_dir: &SPath) -> Result<aiprog::DirContext> {
 	let _ = simple_fs::ensure_dir(base_dir);
