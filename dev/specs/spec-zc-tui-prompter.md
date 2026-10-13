@@ -33,6 +33,7 @@ Out of scope for now:
 ```text
 crates/zc-tui/src/core/
   prompter_keys.rs              # PrompterAction, PrompterMotion, is_send_key, map_prompter_key
+  term_setup.rs                 # TermSetup: terminal init and teardown, Kitty and Alacritty detection
   tui_state/
     prompter_layout.rs          # VisualRow, wrap_rows, cursor_row_col, offset_for_row_col
     prompter_state.rs           # PrompterState: edits, movement, selection, submit, scroll
@@ -85,8 +86,10 @@ Movement keys with SHIFT extend the selection. Without SHIFT, they clear it.
 | Key | Action |
 | --- | --- |
 | Printable key, no modifier or SHIFT | Insert, replacing any selection |
-| Enter, Shift-Enter | Newline |
-| Alt-Enter (Option-Enter on macOS) | Send |
+| Enter, Ctrl-Enter | Send |
+| `\` then Enter | Newline, replacing the `\` |
+| Shift-Enter, Alt-Enter (Option-Enter on macOS) | Newline, when the terminal reports them |
+| Ctrl-j | Newline, on every terminal |
 | Left, Right | Move one grapheme; collapse a selection to its start or end |
 | Ctrl or Alt with Left, Right | Move by word |
 | Alt-b, Alt-f | Move by word (macOS terminals) |
@@ -116,11 +119,13 @@ Submit happens at key time through `StateProcessor::submit_prompt`, which return
 ```rust
 pub enum PromptSubmit {
 	Ignored,
+	Newline,
 	Quit,
 	Run(String),
 }
 ```
 
+- `Newline`: the char before the cursor is `\` and nothing is selected. The `\` is replaced by a newline, and nothing is sent. This is checked first, so it works during a run.
 - `Quit`: the trimmed text is exactly `/q`. Quitting is allowed during a run.
 - `Ignored`: the trimmed text is empty, or a run is active. The buffer is unchanged.
 - `Run(text)`: the trimmed text is sent with inner newlines kept. The buffer is cleared, `last_prompt` is set, waiting is set, and the last error is cleared.
@@ -151,8 +156,8 @@ Typing stays enabled during a run. Only submitting is blocked.
 - The prompt height is 1 to 3 text rows, plus the top and bottom border rows.
 - The selection uses `STL_INPUT_SELECTION`, which is reverse video.
 - The cursor is shown whenever the prompt area has room, including during a run.
-- Title: ` Prompt (/q to quit, Option + Enter to send) ` on macOS, and ` Prompt (/q to quit, Alt + Enter to send) ` elsewhere.
-- Footer: `[Opt-Enter] Send` or `[Alt-Enter] Send`, `[Enter] Newline`, `[/q] Quit`, and `[Ctrl-c] Quit`.
+- The prompt block has no title. The help ` Enter to send  |  \ + Enter for newline  |  /q to quit ` is shown right aligned in the status bar, and hidden when the terminal is too narrow.
+- Footer: `[Enter] Send`, `[\ Enter] Newline`, `[/q] Quit`, and `[Ctrl-c] Quit`.
 
 ## Clipboard
 
@@ -161,21 +166,26 @@ Typing stays enabled during a run. Only submitting is blocked.
 - Copy reads from the prompter buffer, never from rendered rows.
 - Copy and paste errors, and the `Nothing to copy` case, are reported in the status line.
 
-## Terminal Guard and Bracketed Paste
+## Terminal Setup and Bracketed Paste
 
-- `TermGuard` is a drop guard. It disables mouse capture and bracketed paste, then calls `ratatui::restore()`.
-- It runs on normal exit, on early return, and on panic.
-- `start_tui` enables bracketed paste next to mouse capture, right after `ratatui::init()` creates the guard.
+- `TermSetup::init()` calls `ratatui::init()`, enables mouse capture and bracketed paste, enables keyboard enhancement when supported, and clears the terminal.
+- Keyboard enhancement (`DISAMBIGUATE_ESCAPE_CODES`, `REPORT_ALL_KEYS_AS_ESCAPE_CODES`, and `REPORT_ALTERNATE_KEYS`) is pushed whenever `supports_keyboard_enhancement()` confirms it, on any terminal, or when the environment shows Kitty or Alacritty, since the query can fail on them.
+- When keyboard enhancement is off, the startup status says that Shift + Enter is not reported.
+- The `TermSetup` drop is the teardown. It pops the keyboard enhancement flags when pushed, disables mouse capture and bracketed paste, then calls `ratatui::restore()`.
+- The teardown runs on normal exit, on early return, and on panic.
 - Bracketed paste means Ctrl-v must paste only once. The terminal sends the paste as an `Event::Paste`, so the key handler must not also insert text on that event.
 
 ## Platform Notes
 
-- macOS: Option + Enter needs the terminal "Option as Meta" (or "Use Option as Meta key") setting, so the terminal sends Alt.
-- Alt-Enter is the only send key. There is no fallback.
+- `\` + Enter works on every terminal.
+- Shift + Enter is reported only with keyboard enhancement, so only on terminals that support it, such as Kitty and Alacritty.
+- macOS: Option + Enter is reported as Alt + Enter only when the terminal treats Option as Alt, even with keyboard enhancement. Alacritty: `window.option_as_alt = "Both"` (or `"OnlyLeft"`). Kitty: `macos_option_as_alt`. Terminal.app: "Use Option as Meta key". iTerm2: "Esc+".
+- Terminal.app sends plain Enter for Shift + Enter. Use Ctrl-j, or map Shift-Return to send ESC then CR, which is read as Alt + Enter.
 
 ## Manual Check List
 
-- Alt or Option + Enter sends the prompt.
+- Enter sends the prompt, and `\` + Enter inserts a newline.
+- Shift + Enter and Option + Enter insert a newline on terminals that support keyboard enhancement, such as Kitty and Alacritty.
 - Ctrl-v pastes once.
 - Alt-c copies, and the copy can be pasted into another app while the TUI runs (Linux).
 - Alt word jumps work on the target terminals.

@@ -9,6 +9,9 @@ const SYS_REFRESH_INTERVAL_US: i64 = 1_000_000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PromptSubmit {
 	Ignored,
+
+	/// A `\` before the cursor was replaced by a newline, and nothing is sent.
+	Newline,
 	Quit,
 	Run(String),
 }
@@ -17,6 +20,9 @@ pub struct StateProcessor;
 
 impl StateProcessor {
 	pub fn submit_prompt(state: &mut TuiState) -> PromptSubmit {
+		if state.prompter_mut().continue_line() {
+			return PromptSubmit::Newline;
+		}
 		let trimmed = state.prompter().text().trim().to_string();
 		if trimmed == "/q" {
 			return PromptSubmit::Quit;
@@ -281,6 +287,22 @@ mod tests {
 		// -- Check
 		assert_eq!(submit, PromptSubmit::Ignored);
 		assert_eq!(state.prompter().text(), "next");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_submit_prompt_line_continuation() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("first\\".to_string()));
+		state.set_waiting(true);
+
+		// -- Exec
+		let submit = StateProcessor::submit_prompt(&mut state);
+
+		// -- Check
+		assert_eq!(submit, PromptSubmit::Newline);
+		assert_eq!(state.prompter().text(), "first\n");
 
 		Ok(())
 	}

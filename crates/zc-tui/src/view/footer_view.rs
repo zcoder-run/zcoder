@@ -1,5 +1,4 @@
 use crate::core::TuiState;
-use crate::view::prompt_view::PromptView;
 use crate::view::style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -15,10 +14,7 @@ impl FooterView {
 			vertical: 0,
 		});
 
-		let footer_text = format!(
-			" [{}] Send  |  [Enter] Newline  |  [/q] Quit  |  [Ctrl-c] Quit ",
-			PromptView::send_key_hint()
-		);
+		let footer_text = " [Enter] Send  |  [\\ Enter] Newline  |  [/q] Quit  |  [Ctrl-c] Quit ";
 
 		if state.show_sys_states() {
 			let sys_spans = vec![
@@ -99,7 +95,7 @@ mod tests {
 			.filter_map(|x| buffer.cell((x, 0)).map(|c| c.symbol().to_string()))
 			.collect();
 
-		assert!(content.contains("[Enter] Newline"));
+		assert!(content.contains("[\\ Enter] Newline"));
 		assert!(!content.contains("Mem:"));
 		assert!(!content.contains("DB:"));
 

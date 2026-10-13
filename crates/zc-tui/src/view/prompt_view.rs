@@ -24,22 +24,9 @@ impl PromptView {
 		u16::try_from(rows).unwrap_or(PROMPTER_MAX_ROWS).saturating_add(2)
 	}
 
-	/// Label of the send key, shown in the prompt title.
-	pub fn send_key_title_label() -> &'static str {
-		if cfg!(target_os = "macos") {
-			"Option + Enter"
-		} else {
-			"Alt + Enter"
-		}
-	}
-
-	/// Short send key hint, shown in the footer.
-	pub fn send_key_hint() -> &'static str {
-		if cfg!(target_os = "macos") {
-			"Opt-Enter"
-		} else {
-			"Alt-Enter"
-		}
+	/// Prompter help, shown right aligned in the status bar.
+	pub fn help_text() -> &'static str {
+		" Enter to send  |  \\ + Enter for newline  |  /q to quit "
 	}
 
 	pub fn render(f: &mut Frame, area: Rect, state: &mut TuiState) {
@@ -58,7 +45,6 @@ impl PromptView {
 			.block(
 				Block::default()
 					.borders(Borders::TOP | Borders::BOTTOM)
-					.title(format!(" Prompt (/q to quit, {} to send) ", Self::send_key_title_label()))
 					.style(style::STL_INPUT_BORDER),
 			)
 			.style(input_style);

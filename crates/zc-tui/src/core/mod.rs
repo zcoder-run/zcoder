@@ -6,7 +6,7 @@ mod model_loop;
 mod ping_timer;
 mod prompter_keys;
 pub(crate) mod sys_state;
-mod term_guard;
+mod term_setup;
 mod term_reader;
 mod tui_event_handlers;
 mod tui_impl;

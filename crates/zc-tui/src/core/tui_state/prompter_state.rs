@@ -80,6 +80,19 @@ impl PrompterState {
 		self.insert_char('\n');
 	}
 
+	/// Replaces a `\` right before the cursor with a newline, when nothing is selected.
+	/// Returns true when the line continuation was applied.
+	pub fn continue_line(&mut self) -> bool {
+		let has_backslash = self.text.get(..self.cursor).is_some_and(|prefix| prefix.ends_with('\\'));
+		if self.selection().is_some() || !has_backslash {
+			return false;
+		}
+		let start = self.cursor - 1;
+		self.begin_edit();
+		self.text.replace_range(start..self.cursor, "\n");
+		true
+	}
+
 	pub fn backspace(&mut self) {
 		if self.selection().is_some() {
 			self.begin_edit();

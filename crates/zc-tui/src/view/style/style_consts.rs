@@ -43,6 +43,7 @@ pub const STL_INPUT_SELECTION: Style = Style::new().fg(TXT_HIGHLIGHT).bg(BKG_INP
 pub const STL_STATUS_READY: Style = Style::new().fg(TXT_MUTED).bg(BKG_APP);
 pub const STL_STATUS_WAITING: Style = Style::new().fg(TXT_MUTED).bg(BKG_APP);
 pub const STL_STATUS_ERR: Style = Style::new().fg(TXT_ERROR).bg(BKG_APP);
+pub const STL_STATUS_HELP: Style = Style::new().fg(TXT_DIM).bg(BKG_APP);
 
 // -- Footer
 pub const STL_FOOTER: Style = Style::new().fg(TXT_DIM).bg(BKG_APP);

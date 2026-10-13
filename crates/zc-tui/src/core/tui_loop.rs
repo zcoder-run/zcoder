@@ -14,8 +14,12 @@ pub async fn run_ui_loop(
 	ping_tx: PingTimerTx,
 	client: RouterClient,
 	initial_prompt: Option<String>,
+	kbd_enhanced: bool,
 ) -> Result<()> {
 	let mut state = TuiState::new(initial_prompt);
+	if !kbd_enhanced {
+		state.set_status("Idle (Shift + Enter not reported, use \\ + Enter or Ctrl-j for newline)".to_string());
+	}
 
 	loop {
 		terminal.draw(|f| view::render(f, &mut state))?;

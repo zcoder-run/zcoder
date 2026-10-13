@@ -218,3 +218,36 @@ fn test_prompter_state_apply_move_select_and_insert() -> Result<()> {
 
 	Ok(())
 }
+
+#[test]
+fn test_prompter_state_continue_line_replaces_backslash() -> Result<()> {
+	// -- Setup & Fixtures
+	let mut state = PrompterState::from_text("ab\\");
+
+	// -- Exec
+	let continued = state.continue_line();
+
+	// -- Check
+	assert!(continued);
+	assert_eq!(state.text(), "ab\n");
+	assert_eq!(state.cursor(), 3);
+
+	Ok(())
+}
+
+#[test]
+fn test_prompter_state_continue_line_ignored() -> Result<()> {
+	// -- Setup & Fixtures
+	let mut no_backslash = PrompterState::from_text("ab");
+	let mut selected = PrompterState::from_text("ab\\");
+	selected.select_all();
+
+	// -- Exec & Check
+	assert!(!no_backslash.continue_line());
+	assert_eq!(no_backslash.text(), "ab");
+
+	assert!(!selected.continue_line());
+	assert_eq!(selected.text(), "ab\\");
+
+	Ok(())
+}

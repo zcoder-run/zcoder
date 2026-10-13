@@ -70,15 +70,18 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 			KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
 				state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
 			}
-			_ if is_send_key(&key) => match StateProcessor::submit_prompt(state) {
-				PromptSubmit::Quit => {
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
+			_ if is_send_key(&key) => {
+				tracing::debug!("->> send key: {key:?}");
+				match StateProcessor::submit_prompt(state) {
+					PromptSubmit::Quit => {
+						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
+					}
+					PromptSubmit::Run(text) => {
+						let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(text))).await;
+					}
+					PromptSubmit::Newline | PromptSubmit::Ignored => {}
 				}
-				PromptSubmit::Run(text) => {
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(text))).await;
-				}
-				PromptSubmit::Ignored => {}
-			},
+			}
 			KeyCode::PageUp => {
 				state.dec_scroll(ScrollIden::AnswerContent, 5);
 			}
@@ -482,14 +485,14 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_core_tui_event_handlers_alt_enter_queues_run_prompt() -> Result<()> {
+	async fn test_core_tui_event_handlers_enter_queues_run_prompt() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(Some("  hello world  ".to_string()));
 		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
-		let alt_enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+		let enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
 		// -- Exec
-		handle_term_event(&mut state, &tui_tx, alt_enter).await;
+		handle_term_event(&mut state, &tui_tx, enter).await;
 
 		// -- Check
 		let received = rx.recv().await?;
@@ -503,9 +506,25 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_core_tui_event_handlers_enter_inserts_newline() -> Result<()> {
+	async fn test_core_tui_event_handlers_shift_enter_inserts_newline() -> Result<()> {
 		// -- Setup & Fixtures
 		let mut state = TuiState::new(Some("ab".to_string()));
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		let shift_enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+
+		// -- Exec
+		handle_term_event(&mut state, &tui_tx, shift_enter).await;
+
+		// -- Check
+		assert_eq!(state.prompter().text(), "ab\n");
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_backslash_enter_inserts_newline() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("ab\\".to_string()));
 		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
 		let enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
@@ -514,6 +533,7 @@ mod tests {
 
 		// -- Check
 		assert_eq!(state.prompter().text(), "ab\n");
+		assert!(!state.is_waiting());
 
 		Ok(())
 	}

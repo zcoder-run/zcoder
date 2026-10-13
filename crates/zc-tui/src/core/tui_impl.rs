@@ -1,20 +1,14 @@
 use super::event::TuiEvent;
 use super::{ping_timer, term_reader, tui_loop};
-use super::term_guard::TermGuard;
+use super::term_setup::TermSetup;
 use crate::Result;
 use crate::core::model_loop::{run_exec_loop, run_model_loop};
-use crossterm::event::{EnableBracketedPaste, EnableMouseCapture};
-use crossterm::execute;
-use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
 use zc_router::RouterClient;
 
 pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
-	let mut terminal = ratatui::init();
-	let _term_guard = TermGuard;
-	execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
-	terminal.clear()?;
+	let (terminal, term_setup) = TermSetup::init()?;
 
 	// -- Create AppEvent channels
 	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>("tui_channel", 1000)?;
@@ -38,7 +32,16 @@ pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> 
 	let ping_tx = ping_timer::start_ping_timer(tui_tx.clone())?;
 
 	// -- Start TUI Loop
-	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, ping_tx, client, initial_prompt).await;
+	let res = tui_loop::run_ui_loop(
+		terminal,
+		tui_rx,
+		tui_tx,
+		ping_tx,
+		client,
+		initial_prompt,
+		term_setup.kbd_enhanced(),
+	)
+	.await;
 
 	// -- Restore Terminal
 	res
