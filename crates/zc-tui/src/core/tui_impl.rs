@@ -1,8 +1,9 @@
 use super::event::TuiEvent;
 use super::{ping_timer, term_reader, tui_loop};
+use super::term_guard::TermGuard;
 use crate::Result;
 use crate::core::model_loop::{run_exec_loop, run_model_loop};
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{EnableBracketedPaste, EnableMouseCapture};
 use crossterm::execute;
 use std::io::stdout;
 use zc_common::event_base::new_mpsc_bounded;
@@ -11,7 +12,8 @@ use zc_router::RouterClient;
 pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
 	let mut terminal = ratatui::init();
-	execute!(stdout(), EnableMouseCapture)?;
+	let _term_guard = TermGuard;
+	execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
 	terminal.clear()?;
 
 	// -- Create AppEvent channels
@@ -39,8 +41,5 @@ pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> 
 	let res = tui_loop::run_ui_loop(terminal, tui_rx, tui_tx, ping_tx, client, initial_prompt).await;
 
 	// -- Restore Terminal
-	ratatui::restore();
-	let _ = execute!(stdout(), DisableMouseCapture);
-
 	res
 }

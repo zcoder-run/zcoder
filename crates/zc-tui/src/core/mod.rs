@@ -4,7 +4,9 @@ mod debouncer;
 mod event;
 mod model_loop;
 mod ping_timer;
+mod prompter_keys;
 pub(crate) mod sys_state;
+mod term_guard;
 mod term_reader;
 mod tui_event_handlers;
 mod tui_impl;
@@ -14,7 +16,7 @@ mod tui_state;
 pub mod types;
 
 pub use tui_impl::start_tui;
-pub use tui_state::TuiState;
+pub use tui_state::{PROMPTER_MAX_ROWS, PrompterState, TuiState};
 
 #[cfg(test)]
 mod _test_support;

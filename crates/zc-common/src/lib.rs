@@ -7,6 +7,7 @@ pub use error::{Error, Result};
 pub use msg_id::MsgId;
 
 pub mod cache;
+pub mod clipboard;
 pub mod consts;
 pub mod dirs;
 pub mod event_base;

@@ -1,5 +1,6 @@
 // region:    --- Modules
 
+mod comp;
 mod answer_view;
 mod footer_view;
 mod main_view;

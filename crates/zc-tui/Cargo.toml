@@ -24,6 +24,8 @@ futures = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 textwrap = "0.16"
+unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 # -- System
 sysinfo = { workspace = true }
 # -- Others

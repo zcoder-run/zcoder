@@ -241,7 +241,7 @@ mod tests {
 		// -- Check
 		assert!(tmp_path.exists());
 		assert_eq!(config.maestro_model(), "$small");
-		assert_eq!(config.get_model("$small")?, "gemini-3.5-flash-lite");
+		assert_eq!(config.get_model("$small")?, "gpt-6-luna");
 		assert!(!manager.refresh_if_modified()?);
 
 		// Clean up test file
@@ -250,7 +250,7 @@ mod tests {
 		// Refreshing when deleted should recreate file with defaults
 		assert!(manager.refresh_if_modified()?);
 		assert!(tmp_path.exists());
-		assert_eq!(manager.get_config().get_model("$small")?, "gemini-3.5-flash-lite");
+		assert_eq!(manager.get_config().get_model("$small")?, "gpt-6-luna");
 
 		let _ = fs::remove_file(&tmp_path);
 		Ok(())

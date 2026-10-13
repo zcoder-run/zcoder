@@ -1,7 +1,8 @@
 use crate::Result;
 use crate::core::TuiState;
 use crate::core::event::{AppActionEvent, TuiEvent, TuiTx};
-use crate::core::tui_state::StateProcessor;
+use crate::core::prompter_keys::{PrompterAction, is_send_key, map_prompter_key};
+use crate::core::tui_state::{PromptSubmit, StateProcessor};
 use crate::core::types::ScrollIden;
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::Position;
@@ -63,34 +64,36 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 				state.toggle_show_sys_states();
 				let _ = tui_tx.send(TuiEvent::DoRedraw).await;
 			}
-			KeyCode::Enter => {
-				let trimmed_input = state.input().trim().to_string();
-				if trimmed_input == "/q" {
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
-				} else if !trimmed_input.is_empty() && !state.is_waiting() {
-					let prompt = state.input().to_string();
-					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(prompt))).await;
-				}
+			KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) => {
+				state.set_scroll(ScrollIden::AnswerContent, 0);
 			}
+			KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) => {
+				state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
+			}
+			_ if is_send_key(&key) => match StateProcessor::submit_prompt(state) {
+				PromptSubmit::Quit => {
+					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::Quit)).await;
+				}
+				PromptSubmit::Run(text) => {
+					let _ = tui_tx.send(TuiEvent::Action(AppActionEvent::RunPrompt(text))).await;
+				}
+				PromptSubmit::Ignored => {}
+			},
 			KeyCode::PageUp => {
 				state.dec_scroll(ScrollIden::AnswerContent, 5);
 			}
 			KeyCode::PageDown => {
 				state.inc_scroll(ScrollIden::AnswerContent, 5);
 			}
-			KeyCode::Home => {
-				state.set_scroll(ScrollIden::AnswerContent, 0);
+			_ => {
+				if let Some(action) = map_prompter_key(&key) {
+					match action {
+						PrompterAction::Copy => StateProcessor::copy_prompt(state),
+						PrompterAction::Paste => StateProcessor::paste_from_clipboard(state),
+						other => state.prompter_mut().apply(&other),
+					}
+				}
 			}
-			KeyCode::End => {
-				state.set_scroll(ScrollIden::AnswerContent, u16::MAX);
-			}
-			KeyCode::Backspace => {
-				state.pop_input();
-			}
-			KeyCode::Char(c) => {
-				state.push_input(c);
-			}
-			_ => {}
 		},
 		Event::Mouse(mouse_event) => {
 			let pos = Position::new(mouse_event.column, mouse_event.row);
@@ -106,6 +109,7 @@ pub async fn handle_term_event(state: &mut TuiState, tui_tx: &TuiTx, term_event:
 				}
 			}
 		}
+		Event::Paste(text) => state.prompter_mut().insert_str(&text),
 		_ => {}
 	}
 }
@@ -114,9 +118,11 @@ pub async fn handle_app_action(state: &mut TuiState, client: &RouterClient, acti
 	match action {
 		AppActionEvent::Quit => Ok(true),
 		AppActionEvent::RunPrompt(prompt) => {
-			StateProcessor::start_prompt_run(state);
-			let msg = RouterMsg::new(RouterMsgData::Exec(ExecCmd::RunPrompt(prompt)));
-			client.send(msg).await?;
+			let msg = RouterMsg::new(RouterMsgData::Exec(ExecCmd::RunPrompt(prompt.clone())));
+			if let Err(err) = client.send(msg).await {
+				tracing::warn!("Failed to send prompt: {err}");
+				StateProcessor::apply_prompt_send_error(state, prompt, err.to_string());
+			}
 			Ok(false)
 		}
 	}
@@ -456,6 +462,77 @@ mod tests {
 		assert_eq!(info.input_tokens, Some(512));
 		assert_eq!(info.output_tokens, Some(128));
 		assert_eq!(info.reasoning_tokens, Some(64));
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_paste_inserts_text() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+
+		// -- Exec
+		handle_term_event(&mut state, &tui_tx, Event::Paste("a\r\nb\tc".to_string())).await;
+
+		// -- Check
+		assert_eq!(state.prompter().text(), "a\nb    c");
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_alt_enter_queues_run_prompt() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("  hello world  ".to_string()));
+		let (tui_tx, mut rx) = new_mpsc_bounded("test_tui", 10)?;
+		let alt_enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+
+		// -- Exec
+		handle_term_event(&mut state, &tui_tx, alt_enter).await;
+
+		// -- Check
+		let received = rx.recv().await?;
+		assert!(matches!(
+			received,
+			TuiEvent::Action(AppActionEvent::RunPrompt(ref prompt)) if prompt == "hello world"
+		));
+		assert_eq!(state.prompter().text(), "");
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_enter_inserts_newline() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("ab".to_string()));
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		let enter = Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+		// -- Exec
+		handle_term_event(&mut state, &tui_tx, enter).await;
+
+		// -- Check
+		assert_eq!(state.prompter().text(), "ab\n");
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_core_tui_event_handlers_ctrl_home_end_scroll_answer() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		let (tui_tx, _) = new_mpsc_bounded("test_tui", 10)?;
+		state.set_scroll(ScrollIden::AnswerContent, 10);
+		let ctrl_home = Event::Key(KeyEvent::new(KeyCode::Home, KeyModifiers::CONTROL));
+		let ctrl_end = Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::CONTROL));
+
+		// -- Exec & Check
+		handle_term_event(&mut state, &tui_tx, ctrl_home).await;
+		assert_eq!(state.get_scroll(ScrollIden::AnswerContent), 0);
+
+		handle_term_event(&mut state, &tui_tx, ctrl_end).await;
+		assert_eq!(state.get_scroll(ScrollIden::AnswerContent), u16::MAX);
 
 		Ok(())
 	}

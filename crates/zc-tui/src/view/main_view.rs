@@ -5,12 +5,13 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::Block;
 
 pub fn render(f: &mut Frame, state: &mut TuiState) {
+	let prompt_h = PromptView::height(state, f.area().width);
 	let chunks = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([
 			Constraint::Min(0),    // Content
 			Constraint::Length(2), // Status
-			Constraint::Length(3), // Input
+			Constraint::Length(prompt_h), // Input
 			Constraint::Length(1), // Footer
 		])
 		.split(f.area());

@@ -4,17 +4,56 @@ use super::tui_state_base::format_duration_us;
 use crate::view::tblock::AiWorkInfo;
 use zc_router::{RouterClient, db_size};
 
+const SYS_REFRESH_INTERVAL_US: i64 = 1_000_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromptSubmit {
+	Ignored,
+	Quit,
+	Run(String),
+}
+
 pub struct StateProcessor;
 
 impl StateProcessor {
-	pub fn start_prompt_run(state: &mut TuiState) {
-		let prompt = state.input().to_string();
-		if !prompt.is_empty() {
-			state.set_last_prompt(Some(prompt));
+	pub fn submit_prompt(state: &mut TuiState) -> PromptSubmit {
+		let trimmed = state.prompter().text().trim().to_string();
+		if trimmed == "/q" {
+			return PromptSubmit::Quit;
 		}
-		state.clear_input();
+		if trimmed.is_empty() || state.is_waiting() {
+			return PromptSubmit::Ignored;
+		}
+		state.prompter_mut().take_text();
+		state.set_last_prompt(Some(trimmed.clone()));
 		state.set_waiting(true);
 		state.set_last_error(None);
+		PromptSubmit::Run(trimmed)
+	}
+
+	pub fn apply_prompt_send_error(state: &mut TuiState, prompt: String, error: String) {
+		Self::apply_run_error(state, format!("Failed to send prompt: {error}"));
+		state.prompter_mut().restore_text(&prompt);
+	}
+
+	pub fn copy_prompt(state: &mut TuiState) {
+		let text = state.prompter().selected_text().unwrap_or(state.prompter().text()).to_string();
+		if text.is_empty() {
+			state.set_status("Nothing to copy".to_string());
+			return;
+		}
+		let status = match state.clipboard_mut().set_text(text) {
+			Ok(()) => "Copied to clipboard".to_string(),
+			Err(err) => format!("Clipboard error: {err}"),
+		};
+		state.set_status(status);
+	}
+
+	pub fn paste_from_clipboard(state: &mut TuiState) {
+		match state.clipboard_mut().get_text() {
+			Ok(text) => state.prompter_mut().insert_str(&text),
+			Err(err) => state.set_status(format!("Clipboard error: {err}")),
+		}
 	}
 
 	pub fn apply_run_start(state: &mut TuiState) {
@@ -83,6 +122,14 @@ impl StateProcessor {
 			return;
 		}
 
+		let now_us = zc_common::time::now_micro();
+		if let Some(last_us) = state.sys_refresh_us()
+			&& now_us - last_us < SYS_REFRESH_INTERVAL_US
+		{
+			return;
+		}
+		state.set_sys_refresh_us(Some(now_us));
+
 		state.refresh_sys_state();
 		if let Ok(size) = db_size(client).await {
 			state.set_db_memory(size.max(0) as u64);
@@ -137,6 +184,25 @@ mod tests {
 		Ok(())
 	}
 
+	#[tokio::test]
+	async fn test_state_processor_sys_metrics_throttled() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_show_sys_states(true);
+		let client = start_router_with_stub()?;
+
+		// -- Exec
+		StateProcessor::process_sys_metrics(&mut state, &client).await;
+		let first_refresh = state.sys_refresh_us();
+		StateProcessor::process_sys_metrics(&mut state, &client).await;
+
+		// -- Check
+		assert!(first_refresh.is_some());
+		assert_eq!(state.sys_refresh_us(), first_refresh);
+
+		Ok(())
+	}
+
 	#[test]
 	fn test_state_processor_apply_run_error() -> Result<()> {
 		// -- Setup & Fixtures
@@ -156,17 +222,126 @@ mod tests {
 	}
 
 	#[test]
-	fn test_state_processor_start_prompt_run() -> Result<()> {
+	fn test_state_processor_submit_prompt_run() -> Result<()> {
 		// -- Setup & Fixtures
-		let mut state = TuiState::new(Some("Why is the sky blue?".to_string()));
+		let mut state = TuiState::new(Some("  Why is the sky blue?  ".to_string()));
 
 		// -- Exec
-		StateProcessor::start_prompt_run(&mut state);
+		let submit = StateProcessor::submit_prompt(&mut state);
 
 		// -- Check
-		assert_eq!(state.input(), "");
+		assert_eq!(submit, PromptSubmit::Run("Why is the sky blue?".to_string()));
+		assert_eq!(state.prompter().text(), "");
 		assert_eq!(state.last_prompt(), Some("Why is the sky blue?"));
 		assert!(state.is_waiting());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_submit_prompt_ignored_when_empty() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("   ".to_string()));
+
+		// -- Exec
+		let submit = StateProcessor::submit_prompt(&mut state);
+
+		// -- Check
+		assert_eq!(submit, PromptSubmit::Ignored);
+		assert_eq!(state.prompter().text(), "   ");
+		assert!(!state.is_waiting());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_submit_prompt_quit() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some(" /q ".to_string()));
+		state.set_waiting(true);
+
+		// -- Exec
+		let submit = StateProcessor::submit_prompt(&mut state);
+
+		// -- Check
+		assert_eq!(submit, PromptSubmit::Quit);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_submit_prompt_ignored_while_waiting() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("next".to_string()));
+		state.set_waiting(true);
+
+		// -- Exec
+		let submit = StateProcessor::submit_prompt(&mut state);
+
+		// -- Check
+		assert_eq!(submit, PromptSubmit::Ignored);
+		assert_eq!(state.prompter().text(), "next");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_submit_prompt_typing_after_submit() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("first".to_string()));
+		let submit = StateProcessor::submit_prompt(&mut state);
+
+		// -- Exec
+		state.prompter_mut().insert_char('x');
+
+		// -- Check
+		assert!(matches!(submit, PromptSubmit::Run(_)));
+		assert_eq!(state.prompter().text(), "x");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_apply_prompt_send_error_restores_empty() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+		state.set_waiting(true);
+
+		// -- Exec
+		StateProcessor::apply_prompt_send_error(&mut state, "draft".to_string(), "router down".to_string());
+
+		// -- Check
+		assert!(!state.is_waiting());
+		assert_eq!(state.last_error(), Some("Failed to send prompt: router down"));
+		assert_eq!(state.prompter().text(), "draft");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_apply_prompt_send_error_prepends_existing() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(Some("new text".to_string()));
+
+		// -- Exec
+		StateProcessor::apply_prompt_send_error(&mut state, "draft".to_string(), "router down".to_string());
+
+		// -- Check
+		assert_eq!(state.prompter().text(), "draft\nnew text");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_state_processor_copy_prompt_empty() -> Result<()> {
+		// -- Setup & Fixtures
+		let mut state = TuiState::new(None);
+
+		// -- Exec
+		StateProcessor::copy_prompt(&mut state);
+
+		// -- Check
+		assert_eq!(state.status(), "Nothing to copy");
 
 		Ok(())
 	}

@@ -496,7 +496,7 @@ mod tests {
 		let active_config = executor.inner.config_manager.get_config();
 		assert_eq!(active_config.maestro_model(), "$small");
 		let resolved_model = active_config.get_model(active_config.maestro_model())?;
-		assert_eq!(resolved_model, "gemini-3.5-flash-lite");
+		assert_eq!(resolved_model, "gpt-6-luna");
 
 		// -- Clean
 		let _ = std::fs::remove_dir_all(&temp_dir);
@@ -548,7 +548,7 @@ big = "custom-model"
 		// Check defaults are restored
 		let restored_config = executor.inner.config_manager.get_config();
 		assert_eq!(restored_config.maestro_model(), "$small");
-		assert_eq!(restored_config.get_model("$small")?, "gemini-3.5-flash-lite");
+		assert_eq!(restored_config.get_model("$small")?, "gpt-6-luna");
 
 		// -- Clean
 		let _ = std::fs::remove_dir_all(&temp_dir);

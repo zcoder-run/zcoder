@@ -2,9 +2,12 @@ use crate::core::sys_state::SysState;
 use crate::core::types::{ScrollIden, ScrollZones};
 use crate::view::tblock::AiWorkInfo;
 use ratatui::layout::Rect;
+use zc_common::clipboard::Clipboard;
+use super::PrompterState;
 
 pub struct TuiState {
-	input: String,
+	prompter: PrompterState,
+	clipboard: Clipboard,
 	waiting: bool,
 	status: String,
 	last_prompt: Option<String>,
@@ -17,6 +20,7 @@ pub struct TuiState {
 	sys_state: SysState,
 	memory: u64,
 	db_memory: u64,
+	sys_refresh_us: Option<i64>,
 
 	// Reserved for multi-pane focus tracking and keyboard scroll routing.
 	#[allow(dead_code)]
@@ -26,7 +30,8 @@ pub struct TuiState {
 impl TuiState {
 	pub fn new(initial_prompt: Option<String>) -> Self {
 		Self {
-			input: initial_prompt.unwrap_or_default(),
+			prompter: PrompterState::from_text(initial_prompt.unwrap_or_default()),
+			clipboard: Clipboard::default(),
 			waiting: false,
 			status: "Idle".to_string(),
 			last_prompt: None,
@@ -39,24 +44,23 @@ impl TuiState {
 			sys_state: SysState::default(),
 			memory: 0,
 			db_memory: 0,
+			sys_refresh_us: None,
 			active_scroll_zone_iden: None,
 		}
 	}
 
-	pub fn input(&self) -> &str {
-		&self.input
+	// Reserved for prompter event routing.
+	#[allow(dead_code)]
+	pub fn prompter(&self) -> &PrompterState {
+		&self.prompter
 	}
 
-	pub fn push_input(&mut self, c: char) {
-		self.input.push(c);
+	pub fn prompter_mut(&mut self) -> &mut PrompterState {
+		&mut self.prompter
 	}
 
-	pub fn pop_input(&mut self) {
-		self.input.pop();
-	}
-
-	pub fn clear_input(&mut self) {
-		self.input.clear();
+	pub fn clipboard_mut(&mut self) -> &mut Clipboard {
+		&mut self.clipboard
 	}
 
 	pub fn is_waiting(&self) -> bool {
@@ -143,11 +147,21 @@ impl TuiState {
 	#[allow(dead_code)]
 	pub fn set_show_sys_states(&mut self, show: bool) {
 		self.show_sys_states = show;
+		self.sys_refresh_us = None;
 	}
 
 	#[allow(dead_code)]
 	pub fn toggle_show_sys_states(&mut self) {
 		self.show_sys_states = !self.show_sys_states;
+		self.sys_refresh_us = None;
+	}
+
+	pub fn sys_refresh_us(&self) -> Option<i64> {
+		self.sys_refresh_us
+	}
+
+	pub fn set_sys_refresh_us(&mut self, refresh_us: Option<i64>) {
+		self.sys_refresh_us = refresh_us;
 	}
 
 	#[allow(dead_code)]

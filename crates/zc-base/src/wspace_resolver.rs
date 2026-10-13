@@ -9,15 +9,16 @@ impl WksResolver for BaseWksResolver {
 	fn resolve<'a>(&'a self, info: &'a ClientInfo) -> BoxFuture<'a, zc_router::Result<Id>> {
 		Box::pin(async move {
 			let mm = get_model_manager().map_err(|e| zc_router::Error::custom(e.to_string()))?;
-			let id = WksBmc::get_or_create_by_dir(mm, &info.wspace_dir, info.label.clone())
-				.await
-				.map_err(|e| zc_router::Error::custom(e.to_string()))?;
-
+			// -- Materialize first, so the dir exists before it is canonicalized into the wspace row.
 			// -- Materialize the workspace `.zcoder/` assets on connect, so a missing
 			//    `.zcoder/config.toml` is seeded from the bundled `wspace/config.toml`.
 			if let Err(err) = zc_asset::update_wspace_dir(&info.wspace_dir) {
 				tracing::warn!("->> failed to sync workspace assets for {}: {err}", info.wspace_dir);
 			}
+
+			let id = WksBmc::get_or_create_by_dir(mm, &info.wspace_dir, info.label.clone())
+				.await
+				.map_err(|e| zc_router::Error::custom(e.to_string()))?;
 
 			Ok(id)
 		})

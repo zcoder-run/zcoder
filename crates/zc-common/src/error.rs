@@ -17,6 +17,8 @@ pub enum Error {
 	SimpleFs(simple_fs::Error),
 	#[from]
 	YamlSerde(yaml_serde::Error),
+	#[from]
+	Clipboard(arboard::Error),
 
 	// -- External
 	Tx(String),

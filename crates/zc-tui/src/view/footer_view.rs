@@ -1,4 +1,5 @@
 use crate::core::TuiState;
+use crate::view::prompt_view::PromptView;
 use crate::view::style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -13,6 +14,11 @@ impl FooterView {
 			horizontal: 1,
 			vertical: 0,
 		});
+
+		let footer_text = format!(
+			" [{}] Send  |  [Enter] Newline  |  [/q] Quit  |  [Ctrl-c] Quit ",
+			PromptView::send_key_hint()
+		);
 
 		if state.show_sys_states() {
 			let sys_spans = vec![
@@ -32,13 +38,13 @@ impl FooterView {
 				.constraints([Constraint::Min(0), Constraint::Length(metric_width)])
 				.split(footer_area);
 
-			let footer = Paragraph::new(" [Enter] Send  |  [/q] Quit  |  [Ctrl-c] Quit ").style(style::STL_FOOTER);
+			let footer = Paragraph::new(footer_text).style(style::STL_FOOTER);
 			f.render_widget(footer, chunks[0]);
 
 			let metric_par = Paragraph::new(Line::from(sys_spans));
 			f.render_widget(metric_par, chunks[1]);
 		} else {
-			let footer = Paragraph::new(" [Enter] Send  |  [/q] Quit  |  [Ctrl-c] Quit ").style(style::STL_FOOTER);
+			let footer = Paragraph::new(footer_text).style(style::STL_FOOTER);
 			f.render_widget(footer, footer_area);
 		}
 	}
@@ -93,7 +99,7 @@ mod tests {
 			.filter_map(|x| buffer.cell((x, 0)).map(|c| c.symbol().to_string()))
 			.collect();
 
-		assert!(content.contains("[Enter] Send"));
+		assert!(content.contains("[Enter] Newline"));
 		assert!(!content.contains("Mem:"));
 		assert!(!content.contains("DB:"));
 

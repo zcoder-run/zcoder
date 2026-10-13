@@ -37,6 +37,7 @@ pub const STL_ANSWER_ERR_CODE: Style = Style::new().fg(TXT_SECOND).bg(BKG_PANEL)
 pub const STL_INPUT: Style = Style::new().fg(TXT_HIGHLIGHT).bg(BKG_INPUT);
 pub const STL_INPUT_WAITING: Style = Style::new().fg(TXT_MUTED).bg(BKG_INPUT);
 pub const STL_INPUT_BORDER: Style = Style::new().fg(BDR_DIVIDER).bg(BKG_INPUT);
+pub const STL_INPUT_SELECTION: Style = Style::new().fg(TXT_HIGHLIGHT).bg(BKG_INPUT).add_modifier(Modifier::REVERSED);
 
 // -- Status
 pub const STL_STATUS_READY: Style = Style::new().fg(TXT_MUTED).bg(BKG_APP);

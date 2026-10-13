@@ -22,6 +22,8 @@ simple-fs = { workspace = true }
 # -- Time
 time = { workspace = true }
 time-tz = { workspace = true }
+# -- System
+arboard = { workspace = true }
 # -- Others
 derive_more = { workspace = true }
 
