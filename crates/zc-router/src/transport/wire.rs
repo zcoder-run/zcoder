@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_util::bytes::Bytes;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 /// Upper bound on a single payload, guards against a bogus length prefix.
@@ -106,8 +107,8 @@ where
 			});
 		}
 
-		self.framed.send(payload.into()).await?;
-		self.framed.flush().await?;
+		self.framed.send(Bytes::from(payload)).await?;
+		SinkExt::<Bytes>::flush(&mut self.framed).await?;
 
 		Ok(())
 	}

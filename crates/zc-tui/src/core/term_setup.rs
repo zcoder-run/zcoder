@@ -13,6 +13,7 @@ use std::io::stdout;
 pub enum TermKind {
 	Kitty,
 	Alacritty,
+	Tmux,
 	Other,
 }
 
@@ -26,6 +27,7 @@ impl TermSetup {
 	/// Inits the terminal, enables mouse capture and bracketed paste, and enables keyboard
 	/// enhancement when the terminal supports it, or when it is detected as Kitty or Alacritty,
 	/// so Shift + Enter and Option + Enter are reported.
+	/// Under tmux it stays off, since tmux does not forward the protocol.
 	///
 	/// The returned `TermSetup` must be kept alive while the TUI runs, since its drop is the teardown.
 	pub fn init() -> Result<(DefaultTerminal, Self)> {
@@ -37,7 +39,9 @@ impl TermSetup {
 		let query_res = supports_keyboard_enhancement();
 		// Without this, most macOS terminals report Option + Enter as a plain Enter.
 		let kbd_enhanced = should_enable_kbd_enhancement(kind, matches!(query_res, Ok(true)));
-		tracing::debug!("->> terminal kind: {kind:?}, keyboard enhancement query: {query_res:?}, keyboard enhancement: {kbd_enhanced}");
+		tracing::debug!(
+			"->> terminal kind: {kind:?}, keyboard enhancement query: {query_res:?}, keyboard enhancement: {kbd_enhanced}"
+		);
 		if kbd_enhanced {
 			// DISAMBIGUATE_ESCAPE_CODES alone keeps legacy bytes for Enter and Shift + key, so
 			// Shift + Enter still arrives as a plain Enter. REPORT_ALL_KEYS_AS_ESCAPE_CODES encodes
@@ -78,17 +82,23 @@ impl Drop for TermSetup {
 /// The query can fail even on terminals that support the protocol (timeout, or the reply
 /// read by another reader), so Kitty and Alacritty detected from the environment are enabled too.
 /// Terminals that do not know the push sequence ignore it.
+/// Under tmux the flags are never pushed, since tmux does not forward the protocol to the
+/// outer terminal, so Shift + Enter would not be reported anyway.
 fn should_enable_kbd_enhancement(kind: TermKind, query_supported: bool) -> bool {
-	query_supported || kind != TermKind::Other
+	kind != TermKind::Tmux && (query_supported || kind != TermKind::Other)
 }
 
 /// Detects the terminal family from environment variables.
 ///
-/// These variables are inherited through tmux and ssh, so the caller still confirms
+/// `TMUX` is checked first, since tmux inherits the `ALACRITTY_*` variables of the window it
+/// was started from, which would otherwise report Alacritty inside tmux.
+/// The other variables are inherited through ssh, so the caller still confirms
 /// keyboard enhancement support with a terminal query.
 fn detect_term_kind(var: impl Fn(&str) -> Option<String>) -> TermKind {
 	let term = var("TERM").unwrap_or_default();
-	if var("KITTY_WINDOW_ID").is_some() || term == "xterm-kitty" {
+	if var("TMUX").is_some() || term.starts_with("tmux") || term.starts_with("screen") {
+		TermKind::Tmux
+	} else if var("KITTY_WINDOW_ID").is_some() || term == "xterm-kitty" {
 		TermKind::Kitty
 	} else if var("ALACRITTY_WINDOW_ID").is_some() || var("ALACRITTY_SOCKET").is_some() || term == "alacritty" {
 		TermKind::Alacritty
@@ -136,6 +146,19 @@ mod tests {
 	}
 
 	#[test]
+	fn test_core_term_setup_detect_term_kind_tmux() -> Result<()> {
+		// -- Setup & Fixtures
+		let by_tmux = env_from(&[("TMUX", "/tmp/tmux-501/default,123,0"), ("ALACRITTY_WINDOW_ID", "42")]);
+		let by_term = env_from(&[("TERM", "tmux-256color")]);
+
+		// -- Exec & Check
+		assert_eq!(detect_term_kind(by_tmux), TermKind::Tmux);
+		assert_eq!(detect_term_kind(by_term), TermKind::Tmux);
+
+		Ok(())
+	}
+
+	#[test]
 	fn test_core_term_setup_detect_term_kind_other() -> Result<()> {
 		// -- Setup & Fixtures
 		let plain = env_from(&[("TERM", "xterm-256color"), ("TERM_PROGRAM", "Apple_Terminal")]);
@@ -155,6 +178,8 @@ mod tests {
 		assert!(should_enable_kbd_enhancement(TermKind::Alacritty, false));
 		assert!(should_enable_kbd_enhancement(TermKind::Kitty, false));
 		assert!(!should_enable_kbd_enhancement(TermKind::Other, false));
+		assert!(!should_enable_kbd_enhancement(TermKind::Tmux, true));
+		assert!(!should_enable_kbd_enhancement(TermKind::Tmux, false));
 
 		Ok(())
 	}

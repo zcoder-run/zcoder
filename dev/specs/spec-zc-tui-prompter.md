@@ -169,7 +169,7 @@ Typing stays enabled during a run. Only submitting is blocked.
 ## Terminal Setup and Bracketed Paste
 
 - `TermSetup::init()` calls `ratatui::init()`, enables mouse capture and bracketed paste, enables keyboard enhancement when supported, and clears the terminal.
-- Keyboard enhancement (`DISAMBIGUATE_ESCAPE_CODES`, `REPORT_ALL_KEYS_AS_ESCAPE_CODES`, and `REPORT_ALTERNATE_KEYS`) is pushed whenever `supports_keyboard_enhancement()` confirms it, on any terminal, or when the environment shows Kitty or Alacritty, since the query can fail on them.
+- Keyboard enhancement (`DISAMBIGUATE_ESCAPE_CODES`, `REPORT_ALL_KEYS_AS_ESCAPE_CODES`, and `REPORT_ALTERNATE_KEYS`) is pushed whenever `supports_keyboard_enhancement()` confirms it, on any terminal, or when the environment shows Kitty or Alacritty, since the query can fail on them. Under tmux, the flags are never pushed, because tmux does not forward the protocol. `TMUX` is checked before the `ALACRITTY_*` variables, which tmux inherits.
 - When keyboard enhancement is off, the startup status says that Shift + Enter is not reported.
 - The `TermSetup` drop is the teardown. It pops the keyboard enhancement flags when pushed, disables mouse capture and bracketed paste, then calls `ratatui::restore()`.
 - The teardown runs on normal exit, on early return, and on panic.
@@ -179,6 +179,7 @@ Typing stays enabled during a run. Only submitting is blocked.
 
 - `\` + Enter works on every terminal.
 - Shift + Enter is reported only with keyboard enhancement, so only on terminals that support it, such as Kitty and Alacritty.
+- Under tmux, Shift + Enter is not reported, since tmux does not forward the keyboard enhancement protocol. Use Alt + Enter, Ctrl-j, or `\` + Enter instead. To get Alt + Enter from Shift + Return in Alacritty, add a `[[keyboard.bindings]]` entry with `key = "Return"`, `mods = "Shift"`, and `chars = "\u001B\r"`.
 - macOS: Option + Enter is reported as Alt + Enter only when the terminal treats Option as Alt, even with keyboard enhancement. Alacritty: `window.option_as_alt = "Both"` (or `"OnlyLeft"`). Kitty: `macos_option_as_alt`. Terminal.app: "Use Option as Meta key". iTerm2: "Esc+".
 - Terminal.app sends plain Enter for Shift + Enter. Use Ctrl-j, or map Shift-Return to send ESC then CR, which is read as Alt + Enter.
 
