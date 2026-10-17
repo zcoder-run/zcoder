@@ -1,11 +1,11 @@
 use crate::core::TuiState;
-use crate::view::{AnswerView, FooterView, PromptView, StatusView, style};
+use crate::view::{AnswerView, FooterView, PrompterView, StatusView, style};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::widgets::Block;
 
 pub fn render(f: &mut Frame, state: &mut TuiState) {
-	let prompt_h = PromptView::height(state, f.area().width);
+	let prompt_h = PrompterView::height(state, f.area().width);
 	let chunks = Layout::default()
 		.direction(Direction::Vertical)
 		.constraints([
@@ -25,7 +25,7 @@ pub fn render(f: &mut Frame, state: &mut TuiState) {
 	StatusView::render(f, chunks[1], state);
 
 	// -- Input
-	PromptView::render(f, chunks[2], state);
+	PrompterView::render(f, chunks[2], state);
 
 	// -- Footer
 	FooterView::render(f, chunks[3], state);

@@ -7,9 +7,9 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 const INPUT_MARGIN_H: u16 = 1;
 
-pub struct PromptView;
+pub struct PrompterView;
 
-impl PromptView {
+impl PrompterView {
 	/// Width left for the prompt text, after margins and the marker.
 	pub fn text_width(total_width: u16) -> u16 {
 		total_width.saturating_sub(INPUT_MARGIN_H * 2).saturating_sub(PROMPTER_MARKER_WIDTH)
@@ -69,40 +69,7 @@ impl PromptView {
 // region:    --- Tests
 
 #[cfg(test)]
-mod tests {
-	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
-
-	use super::*;
-
-	#[test]
-	fn test_view_prompt_view_height_one_row() -> Result<()> {
-		// -- Setup & Fixtures
-		let mut state = TuiState::new(None);
-		state.prompter_mut().insert_str("hello");
-
-		// -- Exec
-		let height = PromptView::height(&state, 80);
-
-		// -- Check
-		assert_eq!(height, 3);
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_view_prompt_view_height_max_rows() -> Result<()> {
-		// -- Setup & Fixtures
-		let mut state = TuiState::new(None);
-		state.prompter_mut().insert_str("a\nb\nc\nd\ne");
-
-		// -- Exec
-		let height = PromptView::height(&state, 80);
-
-		// -- Check
-		assert_eq!(height, 5);
-
-		Ok(())
-	}
-}
+#[path = "prompter_view_tests.rs"]
+mod tests;
 
 // endregion: --- Tests

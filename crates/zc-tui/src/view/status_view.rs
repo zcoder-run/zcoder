@@ -1,5 +1,5 @@
 use crate::core::TuiState;
-use crate::view::prompt_view::PromptView;
+use crate::view::PrompterView;
 use crate::view::style;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
@@ -29,7 +29,7 @@ impl StatusView {
 			vertical: 0,
 		});
 
-		let help = PromptView::help_text();
+		let help = PrompterView::help_text();
 		let help_w = u16::try_from(help.width()).unwrap_or(u16::MAX);
 		if status_area.width >= help_w.saturating_add(STATUS_MIN_WIDTH) {
 			let chunks = Layout::default()
