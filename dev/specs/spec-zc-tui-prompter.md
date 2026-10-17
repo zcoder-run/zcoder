@@ -156,7 +156,7 @@ Typing stays enabled during a run. Only submitting is blocked.
 - The prompt height is 1 to 3 text rows, plus the top and bottom border rows.
 - The selection uses `STL_INPUT_SELECTION`, which is reverse video.
 - The cursor is shown whenever the prompt area has room, including during a run.
-- The prompt block has no title. The help ` Enter to send  |  \ + Enter for newline  |  /q to quit ` is shown right aligned in the status bar, and hidden when the terminal is too narrow.
+- The prompt block has no title. The help ` Enter to send  |  Ctrl-j newline  |  /q to quit ` is shown right aligned in the status bar, and hidden when the terminal is too narrow.
 - Footer: `[Enter] Send`, `[\ Enter] Newline`, `[/q] Quit`, and `[Ctrl-c] Quit`.
 
 ## Clipboard
@@ -170,7 +170,6 @@ Typing stays enabled during a run. Only submitting is blocked.
 
 - `TermSetup::init()` calls `ratatui::init()`, enables mouse capture and bracketed paste, enables keyboard enhancement when supported, and clears the terminal.
 - Keyboard enhancement (`DISAMBIGUATE_ESCAPE_CODES`, `REPORT_ALL_KEYS_AS_ESCAPE_CODES`, and `REPORT_ALTERNATE_KEYS`) is pushed whenever `supports_keyboard_enhancement()` confirms it, on any terminal, or when the environment shows Kitty or Alacritty, since the query can fail on them. Under tmux, the flags are never pushed, because tmux does not forward the protocol. `TMUX` is checked before the `ALACRITTY_*` variables, which tmux inherits.
-- When keyboard enhancement is off, the startup status says that Shift + Enter is not reported.
 - The `TermSetup` drop is the teardown. It pops the keyboard enhancement flags when pushed, disables mouse capture and bracketed paste, then calls `ratatui::restore()`.
 - The teardown runs on normal exit, on early return, and on panic.
 - Bracketed paste means Ctrl-v must paste only once. The terminal sends the paste as an `Event::Paste`, so the key handler must not also insert text on that event.

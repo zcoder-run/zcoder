@@ -20,7 +20,6 @@ astra         = "gpt-6-astra"
 sol           = "gpt-6-sol"
 gpt           = "gpt-6-sol"
 luna          = "gpt-6-luna"
-terra         = "gpt-5.6-terra"
 # -- Anthropic
 fable         = "claude-fable-5-1"
 opus          = "claude-opus-5-5"
@@ -28,6 +27,7 @@ claude        = "claude-opus-5-5"
 sonnet        = "claude-sonnet-5"
 haiku         = "claude-haiku-4-5"
 # -- google
+argon         = "gemini-4-argon"
 flash         = "gemini-3.8-flash"
 lite          = "gemini-3.5-flash-lite"
 # -- kimi

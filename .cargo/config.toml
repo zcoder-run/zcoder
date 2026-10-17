@@ -1,2 +1,7 @@
 [env]
 ZCODER_BASE_DIR = ".zcoder-base"
+
+[alias]
+rr = "run --release"
+tt = "test --all-features"
+cc = "clippy --all-targets --all-features"

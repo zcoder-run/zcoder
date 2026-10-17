@@ -8,7 +8,8 @@ use zc_router::RouterClient;
 
 pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> Result<()> {
 	// -- Init Terminal
-	let (terminal, term_setup) = TermSetup::init()?;
+	// Kept alive until the TUI exits, since its drop restores the terminal.
+	let (terminal, _term_setup) = TermSetup::init()?;
 
 	// -- Create AppEvent channels
 	let (tui_tx, tui_rx) = new_mpsc_bounded::<TuiEvent>("tui_channel", 1000)?;
@@ -39,7 +40,6 @@ pub async fn start_tui(client: RouterClient, initial_prompt: Option<String>) -> 
 		ping_tx,
 		client,
 		initial_prompt,
-		term_setup.kbd_enhanced(),
 	)
 	.await;
 

@@ -26,7 +26,7 @@ impl PromptView {
 
 	/// Prompter help, shown right aligned in the status bar.
 	pub fn help_text() -> &'static str {
-		" Enter to send  |  \\ + Enter for newline  |  /q to quit "
+		" Enter to send  |  Ctrl-j newline  |  /q to quit "
 	}
 
 	pub fn render(f: &mut Frame, area: Rect, state: &mut TuiState) {

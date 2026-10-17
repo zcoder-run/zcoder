@@ -60,11 +60,6 @@ impl TermSetup {
 
 		Ok((terminal, term_setup))
 	}
-
-	/// Returns true when the keyboard enhancement flags were pushed.
-	pub fn kbd_enhanced(&self) -> bool {
-		self.kbd_enhanced
-	}
 }
 
 impl Drop for TermSetup {
