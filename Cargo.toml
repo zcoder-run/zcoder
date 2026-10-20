@@ -66,8 +66,8 @@ zc-common = { version = "0.0.3", path = "crates/zc-common" }
 zc-router = { version = "0.0.3", path = "crates/zc-router", default-features = false }
 zc-tui = { version = "0.0.3", path = "crates/zc-tui" }
 # -- AI
-genai = { version = "0.7.0-rc" }
-aicost = { version = "0.2" }
+genai = { version = "0.7.0" }
+aicost = { version = "0.3.0" }
 udiffx = { version = "0.3", features = ["prompt"]}
 # https://github.com/zcoder-run/rust-aiprog.git
 aiprog = { version = "0.0.5" }
