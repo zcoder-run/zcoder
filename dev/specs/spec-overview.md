@@ -19,53 +19,61 @@
   - `dev/specs/spec-zc-tui-view.md`: TUI layout, section views, styles, and render helpers.
   - `dev/specs/spec-zc-asset.md`: embedded asset runtime and `.zcoder` workspace materialization.
 
-## Crate Map
+## Code Design
 
-The workspace is the root binary `zcoder` (bin `zc`) plus six library crates, arranged in four layers: entry, role, contract, and foundation. Arrows read as "depends on".
+### System Overview
+
+**Goal:** show the client and daemon processes and the services the daemon uses.
 
 ```mermaid
-flowchart TD
-    Z["zcoder (bin zc)"]
+flowchart LR
+    client[zc client]
+    base[zc base]
+    database[(SQLite)]
+    provider[AI provider]
 
-    T["zc-tui"]
-    B["zc-base"]
-    R["zc-router"]
-    C["zc-core"]
-    M["zc-common"]
-    A["zc-asset"]
-
-    Z --> T
-    Z --> B
-    Z --> R
-    Z --> C
-    Z --> M
-
-    T --> R
-    T --> C
-
-    B --> C
-    B --> M
-    B --> A
-
-    R --> C
-    R --> M
-
-    C --> M
-    C --> A
+    client -->|UDS| base
+    base --> database
+    base --> provider
 ```
 
-The complete dependency set:
+- **zc client**: the root binary starts `zc-tui` and connects through `RouterClient`. If the daemon is offline, it spawns `zc base` and retries the connection.
 
-```text
-zcoder (bin zc)  --> zc-tui, zc-base, zc-core, zc-router, zc-common
+- **zc base**: the daemon hosts `RouterServer` and `zc-base`, owns execution and persistence, and returns replies and workspace-scoped events to clients.
 
-zc-tui           --> zc-router (features = ["client"]), zc-core, zc-common (and zc-base, dev only)
-zc-base          --> zc-router, zc-core, zc-common, zc-asset
-zc-router        --> zc-core, zc-common
-zc-core          --> zc-common
-zc-common        --> (no domain crates)
-zc-asset         --> (no domain crates)
+- **SQLite**: stores model data. Only `zc-base` opens database connections or runs SQL.
+
+- **AI provider**: receives chat requests from the executor in `zc-base` and returns responses.
+
+### Crate Dependencies
+
+**Goal:** show the workspace crates in dependency layers.
+
+```mermaid
+block-beta
+    columns 2
+    zcoder["zcoder"]:2
+    tui["zc-tui"] base["zc-base"]
+    router["zc-router"]:2
+    core["zc-core"]:2
+    common["zc-common"] asset["zc-asset"]
 ```
+
+- **zcoder**: binary crate (bin `zc`); uses `zc-tui`, `zc-base`, `zc-router`, `zc-core`, and `zc-common`.
+
+- **zc-tui**: uses `zc-router` with the `client` feature, `zc-core`, and `zc-common`. Uses `zc-base` only as a dev-dependency for test seeding.
+
+- **zc-base**: uses `zc-router`, `zc-core`, `zc-common`, and `zc-asset`.
+
+- **zc-router**: uses `zc-core` and `zc-common`.
+
+- **zc-core**: uses `zc-common`.
+
+- **zc-common**: foundation, no internal deps.
+
+- **zc-asset**: foundation, no internal deps.
+
+- A part may depend only on layers below it, never sideways or up. Exception: the test-only `zc-tui` dependency on `zc-base` is within the same layer.
 
 ## Crate Table
 
