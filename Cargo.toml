@@ -36,6 +36,14 @@ members = [
 ]
 resolver = "3"
 
+# For dev
+[patch.crates-io]
+# genai = { path = "/Users/jeremychone/_jeremy/_rust/utils/genai/rust-genai" }
+# udiffx = { path = ".../rust-udiffx" }
+# markex = { path = ".../rust-markex" }
+# aicost = { git = "https://github.com/zcoder-run/rust-aicost.git" }
+# modql = { git = "https://github.com/jeremychone/rust-modql.git" }
+aiprog = { git = "https://github.com/zcoder-run/rust-aiprog.git"}
 
 [dependencies]
 # -- Sub Crates
@@ -70,7 +78,7 @@ genai = { version = "0.7" }
 aicost = { version = "0.3" }
 udiffx = { version = "0.3", features = ["prompt"]}
 # https://github.com/zcoder-run/rust-aiprog.git
-aiprog = { version = "0.0.5" }
+aiprog = { version = "0.0.7" }
 # -- Async & Events
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
